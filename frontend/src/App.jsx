@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import ReactMarkdown from 'react-markdown';
+import OpenAI from "openai";
 
 // ==========================================
 // 1. DATA & PROMPTS (From your uploaded .txt files)
@@ -129,24 +130,50 @@ export default function App() {
     setIsLoading(true);
     setActiveTab('2️⃣ AI Analysis'); 
 
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    // WHICH AI TO USE? Set to 'gemini' or 'azure'
+    const AI_PROVIDER = 'gemini'; 
 
-    if (useAI && apiKey) {
-      try {
-        const genAI = new GoogleGenerativeAI(apiKey);
-	const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-        const prompt = `${MAIN_PROMPT}\n\nChallenge type:\n${challengeType}\n\nUser input:\n${inputText}`;
+    try {
+      let finalAnalysisText = "";
+      let currentModeName = "";
+      const prompt = `${MAIN_PROMPT}\n\nChallenge type:\n${challengeType}\n\nUser input:\n${inputText}`;
+
+      if (AI_PROVIDER === 'gemini' && import.meta.env.VITE_GEMINI_API_KEY) {
+        // --- GEMINI LOGIC ---
+        const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" }); 
         const result = await model.generateContent(prompt);
-        setAnalysisResult(result.response.text());
-        setAnalysisMode('Gemini AI Mode');
-      } catch (error) {
-        setAnalysisResult(`## Demo safety fallback activated\nGemini AI could not complete the analysis, so the app automatically switched to rule-based demo mode.\n\n---\n${analyzeCaseWithRules(inputText)}`);
-        setAnalysisMode('Rule-based Demo Mode (Gemini fallback)');
+        finalAnalysisText = result.response.text();
+        currentModeName = 'Gemini AI Mode';
+
+      } else if (AI_PROVIDER === 'azure' && import.meta.env.VITE_AZURE_API_KEY) {
+        // --- AZURE OPENAI LOGIC ---
+        const azureClient = new OpenAI({
+          apiKey: import.meta.env.VITE_AZURE_API_KEY,
+          baseURL: `${import.meta.env.VITE_AZURE_ENDPOINT}/openai/deployments/${import.meta.env.VITE_AZURE_DEPLOYMENT_NAME}`,
+          defaultQuery: { 'api-version': '2024-02-15-preview' },
+          defaultHeaders: { 'api-key': import.meta.env.VITE_AZURE_API_KEY },
+          dangerouslyAllowBrowser: true // Required for Hackathon frontend-only calls
+        });
+
+        const response = await azureClient.chat.completions.create({
+          messages: [{ role: "user", content: prompt }],
+        });
+        finalAnalysisText = response.choices[0].message.content;
+        currentModeName = 'Azure OpenAI Mode';
+      } else {
+        throw new Error("No valid API key found for the selected provider.");
       }
-    } else {
-      setAnalysisResult(`## Gemini API key missing\nNo Gemini API key was detected, so the app automatically switched to rule-based demo mode.\n\n---\n${analyzeCaseWithRules(inputText)}`);
-      setAnalysisMode(useAI ? 'Rule-based Demo Mode (missing Gemini API key)' : 'Rule-based Demo Mode');
+
+      setAnalysisResult(finalAnalysisText);
+      setAnalysisMode(currentModeName);
+
+    } catch (error) {
+      console.error(error);
+      setAnalysisResult(`## Demo safety fallback activated\nAI could not complete the analysis, so the app automatically switched to rule-based demo mode.\n\n---\n${analyzeCaseWithRules(inputText)}`);
+      setAnalysisMode('Rule-based Demo Mode (API Error/Fallback)');
     }
+    
     setIsLoading(false);
   };
 
