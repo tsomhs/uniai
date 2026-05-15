@@ -1,0 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700&display=swap');
+@import "tailwindcss";
+
+/* Streamlit Global Variables */
+:root {
+  --primary-color: #FF4B4B;
+  --bg-color: #FFFFFF;
+  --secondary-bg-color: #F0F2F6; /* Streamlit's sidebar gray */
+  --text-color: #31333F;
+  --font-family: "Source Sans Pro", sans-serif;
+  --border-color: rgba(49, 51, 63, 0.2);
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: var(--font-family);
+  margin: 0;
+  padding: 0;
+}
+
+/* Layout */
+.st-app { display: flex; height: 100vh; overflow: hidden; }
+.st-sidebar { width: 21rem; background-color: var(--secondary-bg-color); padding: 2rem 1.5rem; overflow-y: auto; flex-shrink: 0; }
+.st-main { flex: 1; overflow-y: auto; padding: 0; }
+.st-block-container { max-width: none; padding: 3rem 5rem; margin: 0 auto; }
+
+/* The exact custom CSS from your Python script */
+.app-hero {
+    padding: 1.2rem 1.4rem;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #f7f7fb 0%, #eef2ff 100%);
+    border: 1px solid #e5e7eb;
+    margin-bottom: 1.2rem;
+}
+.app-hero h1 { margin-bottom: 0.3rem; font-size: 2.25rem; font-weight: 700; border-bottom: none; padding-bottom: 0; margin-top: 0; }
+.app-hero p { font-size: 1.05rem; color: #374151; margin-bottom: 0; }
+.small-note { color: #6b7280; font-size: 0.9rem; }
+
+/* Streamlit UI Elements */
+h1, h2, h3 { font-weight: 600; margin-bottom: 1rem; color: var(--text-color); }
+h1 { font-size: 2.25rem; margin-top: 0; }
+h2 { font-size: 1.75rem; margin-top: 1.5rem; font-weight: 600;}
+h3 { font-size: 1.25rem; }
+hr { border: 0; border-top: 1px solid var(--border-color); margin: 2rem 0; }
+
+.st-caption { font-size: 0.875rem; color: rgba(49, 51, 63, 0.6); margin-bottom: 1rem; display: block; }
+
+/* Alerts */
+.st-info, .st-success, .st-warning { padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem; display: flex; gap: 0.5rem; font-size: 1rem; align-items: flex-start; }
+.st-info { background-color: rgba(28, 131, 225, 0.1); color: #004280; }
+.st-success { background-color: rgba(9, 171, 59, 0.1); color: #045a1d; }
+.st-warning { background-color: rgba(255, 164, 33, 0.2); color: #7d4e00; }
+
+/* Inputs */
+.st-label { font-size: 0.875rem; margin-bottom: 0.25rem; display: block; font-weight: 400; color: var(--text-color); }
+.st-input, .st-select, .st-textarea { 
+    width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); 
+    border-radius: 0.5rem; background: var(--bg-color); font-size: 1rem; 
+    color: var(--text-color); margin-bottom: 1.5rem; font-family: inherit;
+    box-sizing: border-box;
+}
+.st-input:focus, .st-select:focus, .st-textarea:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color); }
+
+/* Buttons */
+.st-button { background-color: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; font-size: 1rem; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; }
+.st-button:hover { border-color: var(--primary-color); color: var(--primary-color); }
+.st-button-primary { background-color: var(--primary-color); border-color: var(--primary-color); color: white; }
+.st-button-primary:hover { background-color: #ff3333; border-color: #ff3333; color: white; }
+.st-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Tabs */
+.st-tabs { display: flex; gap: 1.5rem; border-bottom: 1px solid var(--border-color); margin-bottom: 1.5rem; }
+.st-tab { padding: 0.5rem 0; border-bottom: 2px solid transparent; cursor: pointer; font-size: 1rem; color: rgba(49, 51, 63, 0.6); background: none; border-top: none; border-left: none; border-right: none; transition: color 0.2s; white-space: nowrap; }
+.st-tab:hover { color: var(--primary-color); }
+.st-tab-active { color: var(--primary-color); border-bottom-color: var(--primary-color); font-weight: 600; }
+
+/* Metrics */
+.st-metric-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+.st-metric { display: flex; flex-direction: column; }
+.st-metric-label { font-size: 0.875rem; color: rgba(49, 51, 63, 0.6); margin-bottom: 0.25rem; }
+.st-metric-value { font-size: 2.25rem; font-weight: 400; color: var(--text-color); margin: 0; }
+
+/* Expander */
+.st-expander { border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 1rem; margin-bottom: 1.5rem; background: var(--bg-color); }
+.st-expander summary { cursor: pointer; font-weight: 400; list-style: none; outline: none; }
+.st-expander summary::-webkit-details-marker { display: none; }
+.st-expander-content { padding-top: 1rem; color: var(--text-color); }
+
+/* Checkbox */
+.st-checkbox-label { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; cursor: pointer; font-size: 1rem; color: var(--text-color); }
+.st-checkbox { width: 1rem; height: 1rem; accent-color: var(--primary-color); cursor: pointer; }
+
+/* Markdown Styles */
+.st-markdown p { margin-bottom: 1rem; line-height: 1.6; }
+.st-markdown ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem; }
+.st-markdown ol { list-style-type: decimal; margin-left: 1.5rem; margin-bottom: 1rem; }
+.st-markdown strong { font-weight: 600; }
+.st-markdown h1, .st-markdown h2, .st-markdown h3 { margin-top: 1.5rem; }
