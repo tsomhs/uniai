@@ -17,7 +17,7 @@ Explain what the situation is, what problem appears, and what kind of decision s
 
 2. Problem Detected
 Identify the main problem or opportunity. If there are multiple problems, list them in order of importance.
-Explain why this problem matters.
+Explain why this problem matters
 
 3. Stakeholders Affected
 Identify who is affected by the problem, such as users, customers, employees, students, citizens, managers, organizations, or public authorities.
