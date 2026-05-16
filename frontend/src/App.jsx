@@ -9,7 +9,7 @@ import {
 import {
   Send, User, Bot, Loader2, X, BarChart2, Paperclip, Check, Sparkles,
   Database, Upload, Plus, Trash2, ChevronDown, Link,
-  GripVertical, Menu, MessageSquare, ChevronRight,
+  GripVertical, Menu, MessageSquare, ChevronRight, ChevronLeft,
   Download, Copy, Share2, LogOut,
 } from 'lucide-react';
 
@@ -271,32 +271,67 @@ function generateHtmlReport(components, title) {
 // ─── Data-citation modal ──────────────────────────────────────────────────────
 
 function DataCitationModal({ title, data, sql, onClose }) {
-  const [view, setView]       = useState('table'); // 'table' | 'json'
+  const [view, setView]           = useState('table'); // 'table' | 'browse' | 'json'
+  const [rowIndex, setRowIndex]   = useState(0);
   const [sqlCopied, setSqlCopied] = useState(false);
   const [dataCopied, setDataCopied] = useState(false);
 
-  const cols = data?.length ? Object.keys(data[0]) : [];
+  const cols  = data?.length ? Object.keys(data[0]) : [];
+  const total = data?.length ?? 0;
 
-  const copySql = () => {
+  const prev = () => setRowIndex(i => Math.max(0, i - 1));
+  const next = () => setRowIndex(i => Math.min(total - 1, i + 1));
+
+  useEffect(() => {
+    if (view !== 'browse') return;
+    const handler = (e) => {
+      if (e.key === 'ArrowLeft')  prev();
+      if (e.key === 'ArrowRight') next();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [view, total]);
+
+  const copySql = () =>
     navigator.clipboard.writeText(sql || '').then(() => {
       setSqlCopied(true); setTimeout(() => setSqlCopied(false), 1800);
     });
-  };
+
   const copyData = () => {
     const text = view === 'json'
       ? JSON.stringify(data, null, 2)
-      : [cols.join('\t'), ...data.map(r => cols.map(c => r[c] ?? '').join('\t'))].join('\n');
+      : view === 'browse'
+        ? JSON.stringify(data[rowIndex], null, 2)
+        : [cols.join('\t'), ...data.map(r => cols.map(c => r[c] ?? '').join('\t'))].join('\n');
     navigator.clipboard.writeText(text).then(() => {
       setDataCopied(true); setTimeout(() => setDataCopied(false), 1800);
     });
   };
 
-  const pill = (active, label, onClick) => (
-    <button onClick={onClick} style={{
-      padding: '0.3rem 0.8rem', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
-      background: active ? T.purple : 'transparent', color: active ? '#fff' : T.textMuted, transition: 'all 0.15s',
+  const pill = (id, label) => (
+    <button onClick={() => { setView(id); setRowIndex(0); }} style={{
+      padding: '0.3rem 0.8rem', borderRadius: 999, border: 'none', cursor: 'pointer',
+      fontSize: '0.75rem', fontWeight: 600, transition: 'all 0.15s',
+      background: view === id ? T.purple : 'transparent',
+      color: view === id ? '#fff' : T.textMuted,
     }}>{label}</button>
   );
+
+  const navBtn = (onClick, disabled, icon) => (
+    <button onClick={onClick} disabled={disabled} style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      width: 32, height: 32, borderRadius: 8, border: `1px solid ${disabled ? T.border : T.border2}`,
+      background: disabled ? 'transparent' : T.surface,
+      color: disabled ? T.border2 : T.textMuted, cursor: disabled ? 'default' : 'pointer',
+      transition: 'all 0.15s', flexShrink: 0,
+    }}
+    onMouseOver={e => { if (!disabled) { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; } }}
+    onMouseOut={e =>  { if (!disabled) { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; } }}>
+      {icon}
+    </button>
+  );
+
+  const fmtVal = v => typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 4 }) : String(v ?? '—');
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
@@ -308,12 +343,12 @@ function DataCitationModal({ title, data, sql, onClose }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Database size={15} color={T.purpleSoft} />
             <span style={{ fontWeight: 700, fontSize: '0.95rem', color: T.textPri }}>{title}</span>
-            <span style={{ fontSize: '0.72rem', color: T.textDim, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 6, padding: '1px 7px' }}>{data?.length ?? 0} rows</span>
+            <span style={{ fontSize: '0.72rem', color: T.textDim, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 6, padding: '1px 7px' }}>{total} rows</span>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', display: 'flex' }}><X size={18} /></button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0 }}>
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {/* SQL section */}
           {sql && (
             <div style={{ padding: '0.85rem 1.25rem', borderBottom: `1px solid ${T.border}` }}>
@@ -329,36 +364,89 @@ function DataCitationModal({ title, data, sql, onClose }) {
 
           {/* Data section */}
           <div style={{ padding: '0.85rem 1.25rem', flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              {/* View toggle */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 999, padding: '3px 4px' }}>
-                {pill(view === 'table', 'Table', () => setView('table'))}
-                {pill(view === 'json', 'JSON', () => setView('json'))}
+                {pill('table',  'Table')}
+                {pill('browse', 'Browse')}
+                {pill('json',   'JSON')}
               </div>
               <button onClick={copyData} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 6, border: `1px solid ${dataCopied ? '#10b981' : T.border}`, background: T.bg, color: dataCopied ? '#10b981' : T.textMuted, cursor: 'pointer', fontSize: '0.7rem', transition: 'all 0.15s' }}>
-                {dataCopied ? <Check size={11} /> : <Copy size={11} />}{dataCopied ? 'Copied!' : `Copy ${view === 'json' ? 'JSON' : 'TSV'}`}
+                {dataCopied ? <Check size={11} /> : <Copy size={11} />}
+                {dataCopied ? 'Copied!' : view === 'browse' ? 'Copy record' : view === 'json' ? 'Copy JSON' : 'Copy TSV'}
               </button>
             </div>
 
-            {view === 'table' ? (
+            {/* ── Table view ── */}
+            {view === 'table' && (
               <div style={{ borderRadius: 10, border: `1px solid ${T.border}`, overflow: 'hidden' }}>
                 <div style={{ overflowX: 'auto', maxHeight: '38vh' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.79rem' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                       <tr style={{ background: T.bg }}>
+                        <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: T.textDim, borderBottom: `1px solid ${T.border}`, width: 40, fontSize: '0.68rem' }}>#</th>
                         {cols.map(c => <th key={c} style={{ padding: '7px 12px', textAlign: 'left', fontWeight: 600, color: T.textMuted, whiteSpace: 'nowrap', textTransform: 'capitalize', borderBottom: `1px solid ${T.border}` }}>{c.replace(/_/g, ' ')}</th>)}
                       </tr>
                     </thead>
                     <tbody>
                       {data.map((row, i) => (
-                        <tr key={i} style={{ background: i % 2 === 0 ? T.surface : T.bg }}>
-                          {cols.map(c => <td key={c} style={{ padding: '6px 12px', color: T.textPri, borderBottom: `1px solid ${T.border}` }}>{typeof row[c] === 'number' ? row[c].toLocaleString(undefined, { maximumFractionDigits: 4 }) : String(row[c] ?? '')}</td>)}
+                        <tr key={i} onClick={() => { setRowIndex(i); setView('browse'); }}
+                            style={{ background: i % 2 === 0 ? T.surface : T.bg, cursor: 'pointer', transition: 'background 0.1s' }}
+                            onMouseOver={e => e.currentTarget.style.background = `${T.purple}18`}
+                            onMouseOut={e => e.currentTarget.style.background = i % 2 === 0 ? T.surface : T.bg}>
+                          <td style={{ padding: '6px 10px', color: T.textDim, borderBottom: `1px solid ${T.border}`, fontSize: '0.68rem' }}>{i + 1}</td>
+                          {cols.map(c => <td key={c} style={{ padding: '6px 12px', color: T.textPri, borderBottom: `1px solid ${T.border}` }}>{fmtVal(row[c])}</td>)}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+                <div style={{ padding: '6px 12px', background: T.bg, borderTop: `1px solid ${T.border}`, fontSize: '0.68rem', color: T.textDim }}>
+                  Click any row to inspect it in Browse view
+                </div>
               </div>
-            ) : (
+            )}
+
+            {/* ── Browse view ── */}
+            {view === 'browse' && total > 0 && (
+              <div>
+                {/* Navigation bar */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  {navBtn(prev, rowIndex === 0, <ChevronLeft size={15} />)}
+                  <span style={{ fontSize: '0.8rem', color: T.textMuted, fontWeight: 600 }}>
+                    Record <span style={{ color: T.purpleSoft }}>{rowIndex + 1}</span> of {total}
+                  </span>
+                  {navBtn(next, rowIndex === total - 1, <ChevronRight size={15} />)}
+                  <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: T.textDim }}>← → arrow keys also work</span>
+                </div>
+
+                {/* Record card */}
+                <div style={{ borderRadius: 12, border: `1px solid ${T.border2}`, overflow: 'hidden' }}>
+                  {cols.map((c, i) => {
+                    const v = data[rowIndex][c];
+                    const isNum = typeof v === 'number';
+                    return (
+                      <div key={c} style={{ display: 'grid', gridTemplateColumns: '180px 1fr', background: i % 2 === 0 ? T.bg : T.surface, borderBottom: i < cols.length - 1 ? `1px solid ${T.border}` : 'none' }}>
+                        <div style={{ padding: '9px 14px', fontSize: '0.76rem', fontWeight: 600, color: T.textMuted, textTransform: 'capitalize', borderRight: `1px solid ${T.border}`, display: 'flex', alignItems: 'center' }}>
+                          {c.replace(/_/g, ' ')}
+                        </div>
+                        <div style={{ padding: '9px 14px', fontSize: '0.82rem', color: isNum ? T.purpleSoft : T.textPri, fontWeight: isNum ? 600 : 400, display: 'flex', alignItems: 'center', wordBreak: 'break-all' }}>
+                          {fmtVal(v)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Mini progress bar */}
+                <div style={{ marginTop: 10, height: 3, borderRadius: 999, background: T.border, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', borderRadius: 999, background: T.purple, width: `${((rowIndex + 1) / total) * 100}%`, transition: 'width 0.2s' }} />
+                </div>
+              </div>
+            )}
+
+            {/* ── JSON view ── */}
+            {view === 'json' && (
               <pre style={{ margin: 0, padding: '0.75rem 1rem', borderRadius: 10, background: T.bg, border: `1px solid ${T.border}`, fontSize: '0.74rem', color: '#86efac', overflowX: 'auto', maxHeight: '38vh', overflowY: 'auto', lineHeight: 1.55 }}>
                 {JSON.stringify(data, null, 2)}
               </pre>
@@ -778,6 +866,37 @@ function CandlestickComponent({ component }) {
   );
 }
 
+// ─── Explanation accordion ────────────────────────────────────────────────────
+
+function ExplanationAccordion({ type, explanation }) {
+  const [open, setOpen] = useState(false);
+  const label = `Why ${type} chart?`;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 5,
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: T.textDim, fontSize: '0.74rem', padding: '2px 0',
+          transition: 'color 0.15s',
+        }}
+        onMouseOver={e => e.currentTarget.style.color = T.purpleSoft}
+        onMouseOut={e => e.currentTarget.style.color = T.textDim}
+      >
+        <ChevronDown size={13} style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }} />
+        {label}
+      </button>
+      {open && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 5, padding: '0.5rem 0.75rem', borderRadius: 8, background: `${T.purple}0e`, border: `1px solid ${T.purple}28` }}>
+          <Sparkles size={11} color={T.purpleSoft} style={{ marginTop: 2, flexShrink: 0 }} />
+          <span style={{ fontSize: '0.76rem', color: T.textDim, fontStyle: 'italic', lineHeight: 1.5 }}>{explanation}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Dispatcher + grouper ─────────────────────────────────────────────────────
 
 function ChartComponent({ component }) {
@@ -800,10 +919,7 @@ function ChartComponent({ component }) {
     <div>
       {inner}
       {component.type !== 'kpi' && component.explanation && (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 8, padding: '0.5rem 0.75rem', borderRadius: 8, background: `${T.purple}0e`, border: `1px solid ${T.purple}28` }}>
-          <Sparkles size={11} color={T.purpleSoft} style={{ marginTop: 2, flexShrink: 0 }} />
-          <span style={{ fontSize: '0.76rem', color: T.textDim, fontStyle: 'italic', lineHeight: 1.5 }}>{component.explanation}</span>
-        </div>
+        <ExplanationAccordion type={component.type} explanation={component.explanation} />
       )}
     </div>
   );
@@ -1115,10 +1231,14 @@ function panelLabel(components) {
 const WELCOME_CHAT_ID = 'chat-welcome';
 const WELCOME_CHAT    = { id: WELCOME_CHAT_ID, title: 'New Chat', messages: [], sessionId: null, activeIndex: null };
 
-function loadFromStorage() {
+function storageKey(email, suffix) {
+  return `uniai_${suffix}_${email}`;
+}
+
+function loadFromStorage(email) {
   try {
-    const chats     = JSON.parse(localStorage.getItem('uniai_chats') ?? 'null');
-    const chatOrder = JSON.parse(localStorage.getItem('uniai_chatOrder') ?? 'null');
+    const chats     = JSON.parse(localStorage.getItem(storageKey(email, 'chats'))     ?? 'null');
+    const chatOrder = JSON.parse(localStorage.getItem(storageKey(email, 'chatOrder')) ?? 'null');
     if (chats && chatOrder) return { chats, chatOrder };
   } catch {}
   return null;
@@ -1221,17 +1341,17 @@ export default function App({ user, onLogout }) {
   const [locale, setLocale] = useState('en');
   const t = I18N[locale];
 
-  // ── Chat registry — persisted in localStorage ──
+  // ── Chat registry — persisted in localStorage, namespaced per user ──
   const [chats, setChats] = useState(() => {
-    const saved = loadFromStorage();
+    const saved = loadFromStorage(user.email);
     return saved?.chats ?? { [WELCOME_CHAT_ID]: WELCOME_CHAT };
   });
   const [chatOrder, setChatOrder] = useState(() => {
-    const saved = loadFromStorage();
+    const saved = loadFromStorage(user.email);
     return saved?.chatOrder ?? [WELCOME_CHAT_ID];
   });
   const [activeChatId, setActiveChatId] = useState(() => {
-    const saved = loadFromStorage();
+    const saved = loadFromStorage(user.email);
     return saved?.chatOrder?.[0] ?? WELCOME_CHAT_ID;
   });
 
@@ -1298,13 +1418,13 @@ export default function App({ user, onLogout }) {
   };
   useEffect(() => { fetchDatasources(); }, []);
 
-  // ── Persist chat history to localStorage ──
+  // ── Persist chat history to localStorage, namespaced per user ──
   useEffect(() => {
     try {
-      localStorage.setItem('uniai_chats',     JSON.stringify(chats));
-      localStorage.setItem('uniai_chatOrder', JSON.stringify(chatOrder));
+      localStorage.setItem(storageKey(user.email, 'chats'),     JSON.stringify(chats));
+      localStorage.setItem(storageKey(user.email, 'chatOrder'), JSON.stringify(chatOrder));
     } catch {}
-  }, [chats, chatOrder]);
+  }, [chats, chatOrder, user.email]);
 
   // ── New chat ──
   const handleNewChat = () => {
