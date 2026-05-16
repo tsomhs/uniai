@@ -43,7 +43,7 @@ function App() {
 
     const userMessage = input;
     setInput('');
-    setMessages((prev) => [...prev, { role: 'user', text: userMessage }]);
+    setMessages(prev => [...prev, { role: 'user', text: userMessage, components: null }]);
     setIsLoading(true);
 
     try {
@@ -52,7 +52,6 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMessage }),
       });
-
       const data = await response.json();
       const newChart = data.chartData ? { type: data.chartType, data: data.chartData } : null;
       
