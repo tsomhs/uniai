@@ -191,12 +191,20 @@ querying a DuckDB database through MCP tools. You never invent data.
 
 ## Choosing chart types
 
-- kpi    : a single number with a known target threshold
-- pie    : 2–6 categories summing to a whole (language split, outcome share)
-- bar    : ranked categorical data (top intents, breakdown by segment)
-- line   : continuous time axis (daily/weekly volume or metric trend)
-- area   : stacked or cumulative trend
-- table  : >12 rows where comparison matters more than visual ranking
+- kpi         : a single number with a known target threshold
+- pie         : 2–6 categories summing to a whole (language split, outcome share)
+- bar         : ranked categorical data (top intents, breakdown by segment)
+- line        : continuous time axis (daily/weekly volume or metric trend)
+- area        : stacked or cumulative trend
+- table       : >12 rows where comparison matters more than visual ranking
+- scatter     : correlation or distribution between two numeric variables
+                (e.g. call_duration_secs vs csat_score, cost vs turns)
+- heatmap     : intensity of a metric across two categorical dimensions
+                (e.g. region × segment volume, day-of-week × hour call count)
+- radar       : multi-metric comparison across ONE dimension (e.g. KPI benchmark
+                across segments or regions on a spider chart)
+- candlestick : period-over-period range data (open/high/low/close) — use when
+                the user asks about score ranges, variance, or spread over time
 
 For open-ended questions ("how are we doing this week?"), return MULTIPLE
 components — a KPI strip plus 1–2 supporting charts — so the response feels
@@ -236,7 +244,8 @@ question was purely definitional with no natural follow-on.
   "suggestions": ["<follow-up question>", "<follow-up question>"],
   "components": [
     {
-      "type": "kpi" | "bar" | "line" | "pie" | "area" | "table",
+      "type": "kpi" | "bar" | "line" | "pie" | "area" | "table"
+            | "scatter" | "heatmap" | "radar" | "candlestick",
       "title": "<short, specific title>",
       "subtitle": "<date context, e.g. 'Last 7 days (2026-04-25 → 2026-05-01)'> | null",
       "data": [ ... see per-type shape below ... ],
@@ -251,7 +260,7 @@ question was purely definitional with no natural follow-on.
           "warn_color": "#F59E0B"
         } | null
       } | null,
-      "explanation": "<one sentence: why this chart type>",
+      "explanation": "<REQUIRED — one sentence explaining WHY this specific chart type was chosen over alternatives for this data>",
       "sql": "<the exact SQL executed>"
     }
   ],
@@ -260,12 +269,16 @@ question was purely definitional with no natural follow-on.
 }
 
 Data shapes per type:
-  kpi   → [{"name": "<label>", "value": <number>}]          (single row)
-  bar   → [{"name": "<category>", "value": <number>}, ...]  (sorted desc)
-  pie   → [{"name": "<category>", "value": <number>}, ...]
-  line  → [{"name": "<date>", "value": <number>}, ...]       (chronological)
-  area  → same as line; add extra numeric keys for stacked series
-  table → [{"<col>": <val>, ...}, ...]                       (free-form)
+  kpi         → [{"name": "<label>", "value": <number>}]                (single row)
+  bar         → [{"name": "<category>", "value": <number>}, ...]        (sorted desc)
+  pie         → [{"name": "<category>", "value": <number>}, ...]
+  line        → [{"name": "<date>", "value": <number>}, ...]            (chronological)
+  area        → same as line; add extra numeric keys for stacked series
+  table       → [{"<col>": <val>, ...}, ...]                            (free-form)
+  scatter     → [{"name": "<point label>", "x": <number>, "y": <number>}, ...]
+  heatmap     → [{"x": "<col-label>", "y": "<row-label>", "value": <number>}, ...]
+  radar       → [{"name": "<metric>", "value": <number>}, ...]          (0–100 scale preferred)
+  candlestick → [{"name": "<period>", "open": <n>, "high": <n>, "low": <n>, "close": <n>}, ...]
 
 Always use the keys `name` and `value` for the primary series — the existing
 frontend depends on them.
@@ -303,12 +316,16 @@ You never invent data.
 
 ## Choosing chart types
 
-- kpi    : a single summary number (count, average, sum, rate)
-- pie    : 2–6 categories summing to a whole
-- bar    : ranked categorical data — sorted descending
-- line   : metric plotted over a continuous time axis
-- area   : cumulative or stacked trend
-- table  : tabular detail with >10 rows or many columns
+- kpi         : a single summary number (count, average, sum, rate)
+- pie         : 2–6 categories summing to a whole
+- bar         : ranked categorical data — sorted descending
+- line        : metric plotted over a continuous time axis
+- area        : cumulative or stacked trend
+- table       : tabular detail with >10 rows or many columns
+- scatter     : correlation or distribution between two numeric variables
+- heatmap     : intensity across two categorical dimensions (x × y grid)
+- radar       : multi-metric comparison for a single entity on a spider chart
+- candlestick : open/high/low/close range data per time period
 
 For open-ended questions, return MULTIPLE components (a KPI strip + 1–2 charts).
 
@@ -319,7 +336,8 @@ For open-ended questions, return MULTIPLE components (a KPI strip + 1–2 charts
   "suggestions": ["<follow-up question>", "<follow-up question>"],
   "components": [
     {
-      "type": "kpi" | "bar" | "line" | "pie" | "area" | "table",
+      "type": "kpi" | "bar" | "line" | "pie" | "area" | "table"
+            | "scatter" | "heatmap" | "radar" | "candlestick",
       "title": "<short, specific title>",
       "subtitle": "<filter / time context> | null",
       "data": [ ... ],
@@ -329,7 +347,7 @@ For open-ended questions, return MULTIPLE components (a KPI strip + 1–2 charts
         "decimals": 0 | 1 | 2,
         "thresholds": null
       } | null,
-      "explanation": "<one sentence: why this chart type>",
+      "explanation": "<REQUIRED — one sentence explaining WHY this specific chart type was chosen for this data>",
       "sql": "<the exact SQL executed>"
     }
   ],
@@ -338,12 +356,16 @@ For open-ended questions, return MULTIPLE components (a KPI strip + 1–2 charts
 }
 
 Data shapes per type:
-  kpi   → [{"name": "<label>", "value": <number>}]
-  bar   → [{"name": "<category>", "value": <number>}, ...]  sorted desc
-  pie   → [{"name": "<category>", "value": <number>}, ...]
-  line  → [{"name": "<date or label>", "value": <number>}, ...]
-  area  → same as line
-  table → [{"<col>": <val>, ...}, ...]
+  kpi         → [{"name": "<label>", "value": <number>}]
+  bar         → [{"name": "<category>", "value": <number>}, ...]  sorted desc
+  pie         → [{"name": "<category>", "value": <number>}, ...]
+  line        → [{"name": "<date or label>", "value": <number>}, ...]
+  area        → same as line
+  table       → [{"<col>": <val>, ...}, ...]
+  scatter     → [{"name": "<label>", "x": <number>, "y": <number>}, ...]
+  heatmap     → [{"x": "<col-label>", "y": "<row-label>", "value": <number>}, ...]
+  radar       → [{"name": "<metric>", "value": <number>}, ...]
+  candlestick → [{"name": "<period>", "open": <n>, "high": <n>, "low": <n>, "close": <n>}, ...]
 
 Always use the keys `name` and `value` for the primary series.
 

@@ -3,6 +3,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend,
   AreaChart, Area, ReferenceLine,
+  ScatterChart, Scatter, ZAxis,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts';
 import {
   Send, User, Bot, Loader2, X, BarChart2, Paperclip, Check, Sparkles,
@@ -266,10 +268,113 @@ function generateHtmlReport(components, title) {
   ${tables}</body></html>`;
 }
 
+// ─── Data-citation modal ──────────────────────────────────────────────────────
+
+function DataCitationModal({ title, data, sql, onClose }) {
+  const [view, setView]       = useState('table'); // 'table' | 'json'
+  const [sqlCopied, setSqlCopied] = useState(false);
+  const [dataCopied, setDataCopied] = useState(false);
+
+  const cols = data?.length ? Object.keys(data[0]) : [];
+
+  const copySql = () => {
+    navigator.clipboard.writeText(sql || '').then(() => {
+      setSqlCopied(true); setTimeout(() => setSqlCopied(false), 1800);
+    });
+  };
+  const copyData = () => {
+    const text = view === 'json'
+      ? JSON.stringify(data, null, 2)
+      : [cols.join('\t'), ...data.map(r => cols.map(c => r[c] ?? '').join('\t'))].join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setDataCopied(true); setTimeout(() => setDataCopied(false), 1800);
+    });
+  };
+
+  const pill = (active, label, onClick) => (
+    <button onClick={onClick} style={{
+      padding: '0.3rem 0.8rem', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+      background: active ? T.purple : 'transparent', color: active ? '#fff' : T.textMuted, transition: 'all 0.15s',
+    }}>{label}</button>
+  );
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
+         onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ width: '90vw', maxWidth: 780, maxHeight: '85vh', borderRadius: 20, background: T.surface, border: `1px solid ${T.border2}`, boxShadow: '0 24px 80px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ padding: '1rem 1.25rem', borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Database size={15} color={T.purpleSoft} />
+            <span style={{ fontWeight: 700, fontSize: '0.95rem', color: T.textPri }}>{title}</span>
+            <span style={{ fontSize: '0.72rem', color: T.textDim, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 6, padding: '1px 7px' }}>{data?.length ?? 0} rows</span>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', display: 'flex' }}><X size={18} /></button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {/* SQL section */}
+          {sql && (
+            <div style={{ padding: '0.85rem 1.25rem', borderBottom: `1px solid ${T.border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.textDim }}>SQL Query</span>
+                <button onClick={copySql} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 6, border: `1px solid ${sqlCopied ? '#10b981' : T.border}`, background: T.bg, color: sqlCopied ? '#10b981' : T.textMuted, cursor: 'pointer', fontSize: '0.7rem', transition: 'all 0.15s' }}>
+                  {sqlCopied ? <Check size={11} /> : <Copy size={11} />}{sqlCopied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <pre style={{ margin: 0, padding: '0.75rem 1rem', borderRadius: 10, background: T.bg, border: `1px solid ${T.border}`, fontSize: '0.76rem', color: '#a5f3fc', overflowX: 'auto', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{sql}</pre>
+            </div>
+          )}
+
+          {/* Data section */}
+          <div style={{ padding: '0.85rem 1.25rem', flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: T.bg, border: `1px solid ${T.border}`, borderRadius: 999, padding: '3px 4px' }}>
+                {pill(view === 'table', 'Table', () => setView('table'))}
+                {pill(view === 'json', 'JSON', () => setView('json'))}
+              </div>
+              <button onClick={copyData} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 6, border: `1px solid ${dataCopied ? '#10b981' : T.border}`, background: T.bg, color: dataCopied ? '#10b981' : T.textMuted, cursor: 'pointer', fontSize: '0.7rem', transition: 'all 0.15s' }}>
+                {dataCopied ? <Check size={11} /> : <Copy size={11} />}{dataCopied ? 'Copied!' : `Copy ${view === 'json' ? 'JSON' : 'TSV'}`}
+              </button>
+            </div>
+
+            {view === 'table' ? (
+              <div style={{ borderRadius: 10, border: `1px solid ${T.border}`, overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto', maxHeight: '38vh' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.79rem' }}>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                      <tr style={{ background: T.bg }}>
+                        {cols.map(c => <th key={c} style={{ padding: '7px 12px', textAlign: 'left', fontWeight: 600, color: T.textMuted, whiteSpace: 'nowrap', textTransform: 'capitalize', borderBottom: `1px solid ${T.border}` }}>{c.replace(/_/g, ' ')}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.map((row, i) => (
+                        <tr key={i} style={{ background: i % 2 === 0 ? T.surface : T.bg }}>
+                          {cols.map(c => <td key={c} style={{ padding: '6px 12px', color: T.textPri, borderBottom: `1px solid ${T.border}` }}>{typeof row[c] === 'number' ? row[c].toLocaleString(undefined, { maximumFractionDigits: 4 }) : String(row[c] ?? '')}</td>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <pre style={{ margin: 0, padding: '0.75rem 1rem', borderRadius: 10, background: T.bg, border: `1px solid ${T.border}`, fontSize: '0.74rem', color: '#86efac', overflowX: 'auto', maxHeight: '38vh', overflowY: 'auto', lineHeight: 1.55 }}>
+                {JSON.stringify(data, null, 2)}
+              </pre>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Chart action toolbar ─────────────────────────────────────────────────────
 
-function ChartToolbar({ containerRef, title, data }) {
-  const [copied, setCopied] = useState(false);
+function ChartToolbar({ containerRef, title, data, sql }) {
+  const [copied, setCopied]   = useState(false);
+  const [showCite, setShowCite] = useState(false);
 
   const handlePng = () => exportSvgToPng(containerRef.current, title || 'chart');
 
@@ -286,31 +391,42 @@ function ChartToolbar({ containerRef, title, data }) {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem', marginTop: '0.5rem' }}>
-      <button style={btnStyle} onClick={handlePng}
-              onMouseOver={e => { e.currentTarget.style.borderColor = T.purpleSoft; e.currentTarget.style.color = T.textPri; }}
-              onMouseOut={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
-              title="Save chart as PNG">
-        <Download size={12} /> Save PNG
-      </button>
-      <button style={{ ...btnStyle, ...(copied ? { borderColor: '#10b981', color: '#10b981' } : {}) }}
-              onClick={handleCopy}
-              onMouseOver={e => { if (!copied) { e.currentTarget.style.borderColor = T.purpleSoft; e.currentTarget.style.color = T.textPri; } }}
-              onMouseOut={e => { if (!copied) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; } }}
-              title="Copy data as TSV — paste directly into Excel">
-        {copied ? <Check size={12} /> : <Copy size={12} />}
-        {copied ? 'Copied!' : 'Copy for Excel'}
-      </button>
-    </div>
+    <>
+      {showCite && <DataCitationModal title={title} data={data} sql={sql} onClose={() => setShowCite(false)} />}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem', marginTop: '0.5rem' }}>
+        {(sql || data?.length) && (
+          <button style={{ ...btnStyle, borderColor: T.border2, color: T.purpleSoft }} onClick={() => setShowCite(true)}
+                  onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleHi; }}
+                  onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.purpleSoft; }}
+                  title="View source data and SQL query">
+            <Database size={12} /> Cite Source
+          </button>
+        )}
+        <button style={btnStyle} onClick={handlePng}
+                onMouseOver={e => { e.currentTarget.style.borderColor = T.purpleSoft; e.currentTarget.style.color = T.textPri; }}
+                onMouseOut={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+                title="Save chart as PNG">
+          <Download size={12} /> Save PNG
+        </button>
+        <button style={{ ...btnStyle, ...(copied ? { borderColor: '#10b981', color: '#10b981' } : {}) }}
+                onClick={handleCopy}
+                onMouseOver={e => { if (!copied) { e.currentTarget.style.borderColor = T.purpleSoft; e.currentTarget.style.color = T.textPri; } }}
+                onMouseOut={e => { if (!copied) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; } }}
+                title="Copy data as TSV — paste directly into Excel">
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? 'Copied!' : 'Copy for Excel'}
+        </button>
+      </div>
+    </>
   );
 }
 
-function ChartWrapper({ title, data, children }) {
+function ChartWrapper({ title, data, sql, children }) {
   const ref = useRef(null);
   return (
     <div ref={ref}>
       {children}
-      <ChartToolbar containerRef={ref} title={title} data={data} />
+      <ChartToolbar containerRef={ref} title={title} data={data} sql={sql} />
     </div>
   );
 }
@@ -361,7 +477,7 @@ function PieComponent({ component }) {
     return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700}>{((value / total) * 100).toFixed(1)}%</text>;
   };
   return (
-    <ChartWrapper title={title} data={data}>
+    <ChartWrapper title={title} data={data} sql={component.sql}>
       <div style={{ marginTop: '1rem' }}>
         <ChartHeader title={title} subtitle={subtitle} />
         <ResponsiveContainer width="100%" height={280}>
@@ -386,7 +502,7 @@ function BarComponent({ component }) {
   const rotate = data.length > 7;
   const domain = fmt?.unit === '%' ? [0, 1] : ['auto', 'auto'];
   return (
-    <ChartWrapper title={title} data={data}>
+    <ChartWrapper title={title} data={data} sql={component.sql}>
       <div style={{ marginTop: '1rem' }}>
         <ChartHeader title={title} subtitle={subtitle} />
         <ResponsiveContainer width="100%" height={rotate ? 350 : 285}>
@@ -411,7 +527,7 @@ function BarComponent({ component }) {
 function LineComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
   return (
-    <ChartWrapper title={title} data={data}>
+    <ChartWrapper title={title} data={data} sql={component.sql}>
       <div style={{ marginTop: '1rem' }}>
         <ChartHeader title={title} subtitle={subtitle} />
         <ResponsiveContainer width="100%" height={260}>
@@ -433,7 +549,7 @@ function LineComponent({ component }) {
 function AreaComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
   return (
-    <ChartWrapper title={title} data={data}>
+    <ChartWrapper title={title} data={data} sql={component.sql}>
       <div style={{ marginTop: '1rem' }}>
         <ChartHeader title={title} subtitle={subtitle} />
         <ResponsiveContainer width="100%" height={260}>
@@ -485,18 +601,212 @@ function TableComponent({ component }) {
   );
 }
 
+// ─── Scatter ──────────────────────────────────────────────────────────────────
+
+function ScatterComponent({ component }) {
+  const { title, subtitle, data, format: fmt } = component;
+  return (
+    <ChartWrapper title={title} data={data} sql={component.sql}>
+      <div style={{ marginTop: '1rem' }}>
+        <ChartHeader title={title} subtitle={subtitle} />
+        <ResponsiveContainer width="100%" height={280}>
+          <ScatterChart margin={{ top: 12, right: 24, left: 8, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={T.border} />
+            <XAxis dataKey="x" type="number" name="x" tickFormatter={v => displayValue(v, fmt)} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <YAxis dataKey="y" type="number" name="y" tickFormatter={v => displayValue(v, fmt)} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <ZAxis range={[40, 40]} />
+            <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={TOOLTIP_STYLE}
+              content={({ payload }) => {
+                if (!payload?.length) return null;
+                const d = payload[0].payload;
+                return (
+                  <div style={TOOLTIP_STYLE}>
+                    {d.name && <div style={{ color: T.purpleSoft, fontWeight: 700, marginBottom: 4 }}>{d.name}</div>}
+                    <div style={{ color: T.textMuted, fontSize: '0.8rem' }}>x: {displayValue(d.x, fmt)}</div>
+                    <div style={{ color: T.textMuted, fontSize: '0.8rem' }}>y: {displayValue(d.y, fmt)}</div>
+                  </div>
+                );
+              }}
+            />
+            <Scatter data={data} fill={T.purpleHi} fillOpacity={0.8} />
+          </ScatterChart>
+        </ResponsiveContainer>
+      </div>
+    </ChartWrapper>
+  );
+}
+
+// ─── Radar ────────────────────────────────────────────────────────────────────
+
+function RadarComponent({ component }) {
+  const { title, subtitle, data } = component;
+  return (
+    <ChartWrapper title={title} data={data} sql={component.sql}>
+      <div style={{ marginTop: '1rem' }}>
+        <ChartHeader title={title} subtitle={subtitle} />
+        <ResponsiveContainer width="100%" height={300}>
+          <RadarChart data={data} margin={{ top: 10, right: 30, left: 30, bottom: 10 }}>
+            <PolarGrid stroke={T.border} />
+            <PolarAngleAxis dataKey="name" tick={{ fill: T.textMuted, fontSize: 11 }} />
+            <PolarRadiusAxis tick={{ fill: T.textDim, fontSize: 10 }} axisLine={false} />
+            <Radar dataKey="value" stroke={T.purpleHi} fill={T.purpleHi} fillOpacity={0.25} strokeWidth={2} dot={{ r: 3, fill: T.purpleHi }} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: T.purpleSoft }} />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+    </ChartWrapper>
+  );
+}
+
+// ─── Heatmap ──────────────────────────────────────────────────────────────────
+
+function HeatmapComponent({ component }) {
+  const { title, subtitle, data, sql } = component;
+  const ref = useRef(null);
+  const [showCite, setShowCite] = useState(false);
+  if (!data?.length) return null;
+  const xs = [...new Set(data.map(d => d.x))];
+  const ys = [...new Set(data.map(d => d.y))];
+  const vals = data.map(d => d.value);
+  const minV = Math.min(...vals), maxV = Math.max(...vals);
+  const cell = data.reduce((m, d) => { m[`${d.x}||${d.y}`] = d.value; return m; }, {});
+  const alpha = (v) => 0.08 + 0.82 * (v - minV) / (maxV - minV || 1);
+  return (
+    <div ref={ref} style={{ marginTop: '1rem' }}>
+      {showCite && <DataCitationModal title={title} data={data} sql={sql} onClose={() => setShowCite(false)} />}
+      <ChartHeader title={title} subtitle={subtitle} />
+      <div style={{ overflowX: 'auto', marginTop: 12 }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 3, fontSize: '0.72rem' }}>
+          <thead>
+            <tr>
+              <td style={{ minWidth: 64 }} />
+              {xs.map(x => <th key={x} style={{ color: T.textDim, padding: '2px 6px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{x}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {ys.map(y => (
+              <tr key={y}>
+                <td style={{ color: T.textDim, paddingRight: 8, whiteSpace: 'nowrap', fontWeight: 600 }}>{y}</td>
+                {xs.map(x => {
+                  const v = cell[`${x}||${y}`];
+                  const bg = v != null ? `rgba(147,51,234,${alpha(v).toFixed(2)})` : T.surface;
+                  return (
+                    <td key={x} title={v != null ? `${x} × ${y}: ${v}` : '—'}
+                        style={{ width: 44, height: 32, background: bg, borderRadius: 5, textAlign: 'center', color: alpha(v ?? 0) > 0.5 ? '#e9d5ff' : T.textDim, cursor: 'default' }}>
+                      {v != null ? (v > 999 ? `${(v/1000).toFixed(1)}k` : v) : ''}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.68rem', color: T.textDim }}>
+          <span>low</span>
+          <div style={{ width: 80, height: 8, borderRadius: 4, background: 'linear-gradient(to right, rgba(147,51,234,0.08), rgba(147,51,234,0.9))' }} />
+          <span>high</span>
+        </div>
+        <ChartToolbar containerRef={ref} title={title} data={data} sql={sql} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Candlestick ──────────────────────────────────────────────────────────────
+
+function CandlestickComponent({ component }) {
+  const { title, subtitle, data } = component;
+  if (!data?.length) return null;
+  const W = 600, H = 280;
+  const mg = { top: 20, right: 20, bottom: 36, left: 52 };
+  const iW = W - mg.left - mg.right;
+  const iH = H - mg.top - mg.bottom;
+
+  const allV = data.flatMap(d => [d.high, d.low]);
+  const minV = Math.min(...allV), maxV = Math.max(...allV);
+  const pad  = (maxV - minV) * 0.08;
+  const lo = minV - pad, hi = maxV + pad;
+  const sy  = v => iH - ((v - lo) / (hi - lo)) * iH;
+
+  const xStep = iW / data.length;
+  const bw    = Math.max(4, Math.min(16, xStep * 0.55));
+  const cx    = i => i * xStep + xStep / 2;
+
+  const yTicks = Array.from({ length: 5 }, (_, i) => lo + (hi - lo) * i / 4);
+
+  return (
+    <ChartWrapper title={title} data={data} sql={component.sql}>
+      <div style={{ marginTop: '1rem' }}>
+        <ChartHeader title={title} subtitle={subtitle} />
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+          <g transform={`translate(${mg.left},${mg.top})`}>
+            {yTicks.map((v, i) => (
+              <g key={i}>
+                <line x1={0} y1={sy(v)} x2={iW} y2={sy(v)} stroke={T.border} strokeDasharray="3 3" />
+                <text x={-6} y={sy(v)} textAnchor="end" dominantBaseline="middle" fontSize={10} fill={T.textDim}>{v.toFixed(1)}</text>
+              </g>
+            ))}
+            {data.map((d, i) => {
+              const bull   = d.close >= d.open;
+              const color  = bull ? '#10b981' : '#ef4444';
+              const bodyT  = sy(Math.max(d.open, d.close));
+              const bodyB  = sy(Math.min(d.open, d.close));
+              const bodyH  = Math.max(1, bodyB - bodyT);
+              const x      = cx(i);
+              return (
+                <g key={i}>
+                  <line x1={x} y1={sy(d.high)} x2={x} y2={sy(d.low)} stroke={color} strokeWidth={1.5} />
+                  <rect x={x - bw / 2} y={bodyT} width={bw} height={bodyH}
+                        fill={bull ? color : color} stroke={color} strokeWidth={1} rx={2} />
+                  <text x={x} y={iH + 20} textAnchor="middle" fontSize={9} fill={T.textDim}
+                        transform={data.length > 10 ? `rotate(-35,${x},${iH + 20})` : undefined}>
+                    {String(d.name).slice(0, 10)}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+        </svg>
+        <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 4, fontSize: '0.72rem', color: T.textDim }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, background: '#10b981', borderRadius: 2, display: 'inline-block' }} />Bullish</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, background: '#ef4444', borderRadius: 2, display: 'inline-block' }} />Bearish</span>
+        </div>
+      </div>
+    </ChartWrapper>
+  );
+}
+
 // ─── Dispatcher + grouper ─────────────────────────────────────────────────────
 
 function ChartComponent({ component }) {
-  switch (component.type) {
-    case 'kpi':   return <KpiCard component={component} />;
-    case 'pie':   return <PieComponent component={component} />;
-    case 'bar':   return <BarComponent component={component} />;
-    case 'line':  return <LineComponent component={component} />;
-    case 'area':  return <AreaComponent component={component} />;
-    case 'table': return <TableComponent component={component} />;
-    default:      return null;
-  }
+  const inner = (() => {
+    switch (component.type) {
+      case 'kpi':          return <KpiCard component={component} />;
+      case 'pie':          return <PieComponent component={component} />;
+      case 'bar':          return <BarComponent component={component} />;
+      case 'line':         return <LineComponent component={component} />;
+      case 'area':         return <AreaComponent component={component} />;
+      case 'table':        return <TableComponent component={component} />;
+      case 'scatter':      return <ScatterComponent component={component} />;
+      case 'radar':        return <RadarComponent component={component} />;
+      case 'heatmap':      return <HeatmapComponent component={component} />;
+      case 'candlestick':  return <CandlestickComponent component={component} />;
+      default:             return null;
+    }
+  })();
+  return (
+    <div>
+      {inner}
+      {component.type !== 'kpi' && component.explanation && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 8, padding: '0.5rem 0.75rem', borderRadius: 8, background: `${T.purple}0e`, border: `1px solid ${T.purple}28` }}>
+          <Sparkles size={11} color={T.purpleSoft} style={{ marginTop: 2, flexShrink: 0 }} />
+          <span style={{ fontSize: '0.76rem', color: T.textDim, fontStyle: 'italic', lineHeight: 1.5 }}>{component.explanation}</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DashboardComponents({ components }) {
