@@ -5,11 +5,7 @@ import {
   User,
   Eye,
   EyeOff,
-  Sparkles,
   ArrowRight,
-  Database,
-  ShieldCheck,
-  BarChart2,
 } from 'lucide-react';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -100,42 +96,6 @@ function AuthInput({
   );
 }
 
-function FeatureItem({ icon, title, text }) {
-  return (
-    <div style={{
-      display: 'flex',
-      gap: '0.85rem',
-      padding: '0.95rem',
-      borderRadius: 14,
-      background: `${T.surface}cc`,
-      border: `1px solid ${T.border}`,
-    }}>
-      <div style={{
-        width: 38,
-        height: 38,
-        flexShrink: 0,
-        borderRadius: 12,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: `${T.purple}24`,
-        color: T.purpleSoft,
-      }}>
-        {icon}
-      </div>
-
-      <div>
-        <div style={{ color: T.textPri, fontWeight: 700, fontSize: '0.9rem' }}>
-          {title}
-        </div>
-        <div style={{ color: T.textDim, fontSize: '0.78rem', lineHeight: 1.5, marginTop: 3 }}>
-          {text}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const API = 'http://localhost:8000';
 
 export default function AuthPage({ onLogin }) {
@@ -220,116 +180,14 @@ export default function AuthPage({ onLogin }) {
 
       <div style={{
         width: '100%',
-        maxWidth: 1120,
-        display: 'grid',
-        gridTemplateColumns: '1.05fr 0.95fr',
-        gap: '1.5rem',
-        alignItems: 'stretch',
+        maxWidth: 500,
+        margin: '0 auto',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
       }}>
 
-        {/* ── LEFT: Brand / Product copy ── */}
-        <section style={{
-          position: 'relative',
-          overflow: 'hidden',
-          borderRadius: 24,
-          border: `1px solid ${T.border}`,
-          background:
-            `linear-gradient(145deg, ${T.surface} 0%, ${T.surface2} 55%, ${T.bg} 100%)`,
-          padding: '2rem',
-          minHeight: 620,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
-        }}>
-          <div style={{
-            position: 'absolute',
-            width: 260,
-            height: 260,
-            borderRadius: '50%',
-            background: `${T.purple}33`,
-            filter: 'blur(55px)',
-            top: -70,
-            right: -70,
-          }} />
-
-          <div style={{ position: 'relative', zIndex: 1 }}>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.45rem 0.75rem',
-              borderRadius: 999,
-              border: `1px solid ${T.border2}`,
-              background: `${T.bg}99`,
-              color: T.purpleSoft,
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              marginBottom: '1.35rem',
-            }}>
-              <Sparkles size={15} />
-              Speak With Your Data
-            </div>
-
-            <h1 style={{
-              margin: 0,
-              fontSize: '3rem',
-              lineHeight: 1.05,
-              letterSpacing: '-0.055em',
-              maxWidth: 540,
-              color: '#ffffff',
-            }}>
-              Turn your data into answers.
-            </h1>
-
-            <p style={{
-              color: T.textMuted,
-              fontSize: '1.02rem',
-              lineHeight: 1.75,
-              maxWidth: 560,
-              marginTop: '1.15rem',
-            }}>
-              Sign in to ask questions, inspect dashboards, and explore insights
-              from your connected database in a clean AI-powered workspace.
-            </p>
-          </div>
-
-          <div style={{
-            position: 'relative',
-            zIndex: 1,
-            display: 'grid',
-            gap: '0.75rem',
-            marginTop: '2rem',
-          }}>
-            <FeatureItem
-              icon={<Database size={19} />}
-              title="Connected data workspace"
-              text="Ask natural-language questions and receive structured answers with charts."
-            />
-            <FeatureItem
-              icon={<BarChart2 size={19} />}
-              title="Dashboard-ready output"
-              text="Open KPI cards, bar charts, line charts and tables in the Data Inspector."
-            />
-            <FeatureItem
-              icon={<ShieldCheck size={19} />}
-              title="Secure team access"
-              text="Use this page as the starting point for your login and sign-up flow."
-            />
-          </div>
-
-          <div style={{
-            position: 'relative',
-            zIndex: 1,
-            color: T.textDim,
-            fontSize: '0.75rem',
-            marginTop: '1.5rem',
-          }}>
-            by <span style={{ color: T.purpleSoft, fontWeight: 700 }}>Prompt Masters</span>
-          </div>
-        </section>
-
-        {/* ── RIGHT: Auth form ── */}
+        {/* ── Auth form ── */}
         <main style={{
           borderRadius: 24,
           border: `1px solid ${T.border}`,
@@ -348,41 +206,6 @@ export default function AuthPage({ onLogin }) {
             padding: '2rem',
           }}>
 
-            {/* Toggle */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 8,
-              padding: 6,
-              borderRadius: 14,
-              background: T.surface,
-              border: `1px solid ${T.border}`,
-              marginBottom: '1.8rem',
-            }}>
-              {['login', 'signup'].map(item => {
-                const active = mode === item;
-                return (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setMode(item)}
-                    style={{
-                      border: 'none',
-                      cursor: 'pointer',
-                      borderRadius: 10,
-                      padding: '0.75rem 1rem',
-                      background: active ? T.purple : 'transparent',
-                      color: active ? 'white' : T.textMuted,
-                      fontWeight: 700,
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    {item === 'login' ? 'Log in' : 'Sign up'}
-                  </button>
-                );
-              })}
-            </div>
-
             <div style={{ marginBottom: '1.4rem' }}>
               <h2 style={{
                 margin: 0,
@@ -392,7 +215,6 @@ export default function AuthPage({ onLogin }) {
               }}>
                 {isSignup ? 'Create your account' : 'Welcome back'}
               </h2>
-
               <p style={{
                 margin: '0.55rem 0 0',
                 color: T.textDim,
@@ -400,7 +222,7 @@ export default function AuthPage({ onLogin }) {
                 fontSize: '0.92rem',
               }}>
                 {isSignup
-                  ? 'Start using your AI data assistant with a new workspace account.'
+                  ? ''
                   : 'Log in to continue your conversation with your data.'}
               </p>
             </div>
@@ -542,53 +364,7 @@ export default function AuthPage({ onLogin }) {
               </button>
             </form>
 
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              margin: '1.35rem 0',
-              color: T.textDim,
-              fontSize: '0.78rem',
-            }}>
-              <div style={{ height: 1, flex: 1, background: T.border }} />
-              or continue with
-              <div style={{ height: 1, flex: 1, background: T.border }} />
-            </div>
 
-            <button
-              type="button"
-              style={{
-                width: '100%',
-                height: 48,
-                borderRadius: 12,
-                border: `1px solid ${T.border2}`,
-                background: T.surface,
-                color: T.textPri,
-                cursor: 'pointer',
-                fontWeight: 700,
-                transition: 'all 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.6rem',
-              }}
-              onMouseOver={e => {
-                e.currentTarget.style.borderColor = T.purple;
-                e.currentTarget.style.color = T.purpleSoft;
-              }}
-              onMouseOut={e => {
-                e.currentTarget.style.borderColor = T.border2;
-                e.currentTarget.style.color = T.textPri;
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-                <path fill="#EA4335" d="M24 9.5c3.14 0 5.95 1.08 8.17 2.86l6.08-6.08C34.46 3.04 29.52 1 24 1 14.82 1 7.02 6.48 3.6 14.22l7.1 5.52C12.4 13.62 17.74 9.5 24 9.5z"/>
-                <path fill="#4285F4" d="M46.52 24.5c0-1.64-.15-3.22-.42-4.75H24v9h12.7c-.55 2.98-2.2 5.5-4.68 7.2l7.18 5.58C43.3 37.38 46.52 31.4 46.52 24.5z"/>
-                <path fill="#FBBC05" d="M10.7 28.26A14.57 14.57 0 0 1 9.5 24c0-1.48.25-2.92.7-4.26l-7.1-5.52A23.93 23.93 0 0 0 .5 24c0 3.86.92 7.5 2.6 10.72l7.6-6.46z"/>
-                <path fill="#34A853" d="M24 47c5.52 0 10.16-1.82 13.54-4.96l-7.18-5.58C28.56 37.9 26.38 38.5 24 38.5c-6.26 0-11.6-4.12-13.3-9.74l-7.6 6.46C6.98 42.48 14.82 47 24 47z"/>
-              </svg>
-              Continue with Google
-            </button>
 
             <p style={{
               textAlign: 'center',
@@ -620,16 +396,6 @@ export default function AuthPage({ onLogin }) {
       {/* Small responsive helper without external CSS file */}
       <style>
         {`
-          @media (max-width: 920px) {
-            div[style*="grid-template-columns: 1.05fr 0.95fr"] {
-              grid-template-columns: 1fr !important;
-            }
-
-            section[style*="min-height: 620px"] {
-              min-height: auto !important;
-            }
-          }
-
           input::placeholder {
             color: ${T.textDim};
           }
