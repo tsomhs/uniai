@@ -8,6 +8,7 @@ import {
   Send, User, Bot, Loader2, X, BarChart2, Paperclip, Check, Sparkles,
   Database, Upload, Plus, Trash2, ChevronDown, Link,
   GripVertical, Menu, MessageSquare, ChevronRight,
+  Download, Copy, Share2,
 } from 'lucide-react';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -193,6 +194,127 @@ function ChartHeader({ title, subtitle }) {
   );
 }
 
+// ─── Chart export utilities ───────────────────────────────────────────────────
+
+function exportSvgToPng(containerEl, filename) {
+  const svg = containerEl?.querySelector('svg');
+  if (!svg) return;
+  const { width, height } = svg.getBoundingClientRect();
+  const clone = svg.cloneNode(true);
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  clone.setAttribute('width', width);
+  clone.setAttribute('height', height);
+  const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  bg.setAttribute('width', '100%'); bg.setAttribute('height', '100%'); bg.setAttribute('fill', T.bg);
+  clone.insertBefore(bg, clone.firstChild);
+  const svgStr = new XMLSerializer().serializeToString(clone);
+  const blob   = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+  const url    = URL.createObjectURL(blob);
+  const img    = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    const scale  = 2;
+    canvas.width  = width  * scale;
+    canvas.height = height * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.fillStyle = T.bg;
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+    URL.revokeObjectURL(url);
+    canvas.toBlob(b => {
+      const a = document.createElement('a');
+      a.href     = URL.createObjectURL(b);
+      a.download = `${filename.replace(/[^a-z0-9]/gi, '_')}.png`;
+      a.click();
+    });
+  };
+  img.src = url;
+}
+
+function copyAsTsv(data) {
+  if (!data?.length) return Promise.resolve(false);
+  const cols = Object.keys(data[0]);
+  const tsv  = [cols, ...data.map(row => cols.map(c => row[c] ?? ''))].map(r => r.join('\t')).join('\n');
+  return navigator.clipboard.writeText(tsv).then(() => true).catch(() => false);
+}
+
+function generateHtmlReport(components, title) {
+  const rows = (data) => (data ?? []).map(row =>
+    `<tr>${Object.values(row).map(v => `<td>${typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 4 }) : v ?? ''}</td>`).join('')}</tr>`
+  ).join('');
+  const tables = components.map(c => {
+    if (!c.data?.length) return '';
+    const cols = Object.keys(c.data[0]);
+    return `<section><h2>${c.title ?? ''}</h2>${c.subtitle ? `<p class="sub">${c.subtitle}</p>` : ''}
+      <table><thead><tr>${cols.map(col => `<th>${col.replace(/_/g, ' ')}</th>`).join('')}</tr></thead>
+      <tbody>${rows(c.data)}</tbody></table></section>`;
+  }).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>${title ?? 'Data Report'}</title>
+  <style>
+    body{font-family:system-ui,sans-serif;margin:40px;color:#111}
+    h1{font-size:1.4rem;margin-bottom:4px}h2{font-size:1.1rem;margin:2rem 0 4px}
+    .sub{color:#666;font-size:.85rem;margin:0 0 10px}
+    table{border-collapse:collapse;width:100%;font-size:.85rem;margin-top:.5rem}
+    th{background:#f0f0f0;padding:8px 12px;text-align:left;font-weight:600;text-transform:capitalize}
+    td{padding:7px 12px;border-bottom:1px solid #e5e5e5}
+    section{margin-bottom:2rem}
+    @media print{body{margin:20px}}
+  </style></head>
+  <body><h1>${title ?? 'Data Report'}</h1><p class="sub">Generated ${new Date().toLocaleString()}</p>
+  ${tables}</body></html>`;
+}
+
+// ─── Chart action toolbar ─────────────────────────────────────────────────────
+
+function ChartToolbar({ containerRef, title, data }) {
+  const [copied, setCopied] = useState(false);
+
+  const handlePng = () => exportSvgToPng(containerRef.current, title || 'chart');
+
+  const handleCopy = async () => {
+    const ok = await copyAsTsv(data);
+    if (ok) { setCopied(true); setTimeout(() => setCopied(false), 1800); }
+  };
+
+  const btnStyle = {
+    display: 'flex', alignItems: 'center', gap: 5,
+    padding: '4px 10px', borderRadius: 6, border: `1px solid ${T.border}`,
+    background: T.surface, color: T.textMuted, cursor: 'pointer',
+    fontSize: '0.72rem', fontWeight: 500, transition: 'all 0.15s',
+  };
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem', marginTop: '0.5rem' }}>
+      <button style={btnStyle} onClick={handlePng}
+              onMouseOver={e => { e.currentTarget.style.borderColor = T.purpleSoft; e.currentTarget.style.color = T.textPri; }}
+              onMouseOut={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}
+              title="Save chart as PNG">
+        <Download size={12} /> Save PNG
+      </button>
+      <button style={{ ...btnStyle, ...(copied ? { borderColor: '#10b981', color: '#10b981' } : {}) }}
+              onClick={handleCopy}
+              onMouseOver={e => { if (!copied) { e.currentTarget.style.borderColor = T.purpleSoft; e.currentTarget.style.color = T.textPri; } }}
+              onMouseOut={e => { if (!copied) { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; } }}
+              title="Copy data as TSV — paste directly into Excel">
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+        {copied ? 'Copied!' : 'Copy for Excel'}
+      </button>
+    </div>
+  );
+}
+
+function ChartWrapper({ title, data, children }) {
+  const ref = useRef(null);
+  return (
+    <div ref={ref}>
+      {children}
+      <ChartToolbar containerRef={ref} title={title} data={data} />
+    </div>
+  );
+}
+
 // ─── KPI card ─────────────────────────────────────────────────────────────────
 
 function KpiCard({ component }) {
@@ -239,18 +361,20 @@ function PieComponent({ component }) {
     return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700}>{((value / total) * 100).toFixed(1)}%</text>;
   };
   return (
-    <div style={{ marginTop: '1rem' }}>
-      <ChartHeader title={title} subtitle={subtitle} />
-      <ResponsiveContainer width="100%" height={280}>
-        <PieChart>
-          <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={110} labelLine={false} label={renderLabel} stroke={T.bg} strokeWidth={3}>
-            {data.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-          </Pie>
-          <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: T.purpleSoft }} formatter={v => [v.toLocaleString(), '']} />
-          <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '0.78rem', color: T.textMuted, paddingTop: 8 }} />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartWrapper title={title} data={data}>
+      <div style={{ marginTop: '1rem' }}>
+        <ChartHeader title={title} subtitle={subtitle} />
+        <ResponsiveContainer width="100%" height={280}>
+          <PieChart>
+            <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={110} labelLine={false} label={renderLabel} stroke={T.bg} strokeWidth={3}>
+              {data.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+            </Pie>
+            <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: T.purpleSoft }} formatter={v => [v.toLocaleString(), '']} />
+            <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '0.78rem', color: T.textMuted, paddingTop: 8 }} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+    </ChartWrapper>
   );
 }
 
@@ -262,21 +386,23 @@ function BarComponent({ component }) {
   const rotate = data.length > 7;
   const domain = fmt?.unit === '%' ? [0, 1] : ['auto', 'auto'];
   return (
-    <div style={{ marginTop: '1rem' }}>
-      <ChartHeader title={title} subtitle={subtitle} />
-      <ResponsiveContainer width="100%" height={rotate ? 350 : 285}>
-        <BarChart data={data} margin={{ top: 12, right: 20, left: 8, bottom: rotate ? 90 : 8 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
-          <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK} angle={rotate ? -42 : 0} textAnchor={rotate ? 'end' : 'middle'} interval={0} axisLine={false} tickLine={false} />
-          <YAxis tickFormatter={v => displayValue(v, fmt)} domain={domain} tick={AXIS_TICK} axisLine={false} tickLine={false} />
-          <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']} contentStyle={TOOLTIP_STYLE} cursor={{ fill: `${T.border}80` }} />
-          {thr && <ReferenceLine y={thr.good} stroke={thr.good_color} strokeDasharray="6 3" label={{ value: `Target ${displayValue(thr.good, fmt)}`, position: 'insideTopRight', fontSize: 10, fill: thr.good_color }} />}
-          <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-            {data.map((row, i) => <Cell key={i} fill={thresholdColor(row.value, thr)} />)}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartWrapper title={title} data={data}>
+      <div style={{ marginTop: '1rem' }}>
+        <ChartHeader title={title} subtitle={subtitle} />
+        <ResponsiveContainer width="100%" height={rotate ? 350 : 285}>
+          <BarChart data={data} margin={{ top: 12, right: 20, left: 8, bottom: rotate ? 90 : 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
+            <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK} angle={rotate ? -42 : 0} textAnchor={rotate ? 'end' : 'middle'} interval={0} axisLine={false} tickLine={false} />
+            <YAxis tickFormatter={v => displayValue(v, fmt)} domain={domain} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']} contentStyle={TOOLTIP_STYLE} cursor={{ fill: `${T.border}80` }} />
+            {thr && <ReferenceLine y={thr.good} stroke={thr.good_color} strokeDasharray="6 3" label={{ value: `Target ${displayValue(thr.good, fmt)}`, position: 'insideTopRight', fontSize: 10, fill: thr.good_color }} />}
+            <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+              {data.map((row, i) => <Cell key={i} fill={thresholdColor(row.value, thr)} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </ChartWrapper>
   );
 }
 
@@ -285,18 +411,20 @@ function BarComponent({ component }) {
 function LineComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
   return (
-    <div style={{ marginTop: '1rem' }}>
-      <ChartHeader title={title} subtitle={subtitle} />
-      <ResponsiveContainer width="100%" height={260}>
-        <LineChart data={data} margin={{ top: 8, right: 20, left: 8, bottom: 8 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
-          <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK} axisLine={false} tickLine={false} />
-          <YAxis tickFormatter={v => displayValue(v, fmt)} tick={AXIS_TICK} axisLine={false} tickLine={false} />
-          <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']} contentStyle={TOOLTIP_STYLE} />
-          <Line type="monotone" dataKey="value" stroke={T.purpleHi} strokeWidth={3} dot={{ r: 3, fill: T.purpleHi }} activeDot={{ r: 5, fill: T.purpleSoft }} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartWrapper title={title} data={data}>
+      <div style={{ marginTop: '1rem' }}>
+        <ChartHeader title={title} subtitle={subtitle} />
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart data={data} margin={{ top: 8, right: 20, left: 8, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
+            <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <YAxis tickFormatter={v => displayValue(v, fmt)} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']} contentStyle={TOOLTIP_STYLE} />
+            <Line type="monotone" dataKey="value" stroke={T.purpleHi} strokeWidth={3} dot={{ r: 3, fill: T.purpleHi }} activeDot={{ r: 5, fill: T.purpleSoft }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </ChartWrapper>
   );
 }
 
@@ -305,24 +433,26 @@ function LineComponent({ component }) {
 function AreaComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
   return (
-    <div style={{ marginTop: '1rem' }}>
-      <ChartHeader title={title} subtitle={subtitle} />
-      <ResponsiveContainer width="100%" height={260}>
-        <AreaChart data={data} margin={{ top: 8, right: 20, left: 8, bottom: 8 }}>
-          <defs>
-            <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%"  stopColor={T.purpleHi} stopOpacity={0.35} />
-              <stop offset="95%" stopColor={T.purpleHi} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
-          <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK} axisLine={false} tickLine={false} />
-          <YAxis tickFormatter={v => displayValue(v, fmt)} tick={AXIS_TICK} axisLine={false} tickLine={false} />
-          <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']} contentStyle={TOOLTIP_STYLE} />
-          <Area type="monotone" dataKey="value" stroke={T.purpleHi} strokeWidth={3} fill="url(#areaGrad)" dot={{ r: 3, fill: T.purpleHi }} activeDot={{ r: 5, fill: T.purpleSoft }} />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartWrapper title={title} data={data}>
+      <div style={{ marginTop: '1rem' }}>
+        <ChartHeader title={title} subtitle={subtitle} />
+        <ResponsiveContainer width="100%" height={260}>
+          <AreaChart data={data} margin={{ top: 8, right: 20, left: 8, bottom: 8 }}>
+            <defs>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor={T.purpleHi} stopOpacity={0.35} />
+                <stop offset="95%" stopColor={T.purpleHi} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
+            <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <YAxis tickFormatter={v => displayValue(v, fmt)} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']} contentStyle={TOOLTIP_STYLE} />
+            <Area type="monotone" dataKey="value" stroke={T.purpleHi} strokeWidth={3} fill="url(#areaGrad)" dot={{ r: 3, fill: T.purpleHi }} activeDot={{ r: 5, fill: T.purpleSoft }} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </ChartWrapper>
   );
 }
 
@@ -971,7 +1101,7 @@ export default function App() {
               onMouseOut={e =>  { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}
             >
               <ChevronRight size={12} style={{ transform: 'rotate(90deg)' }} />
-              {locale === 'en' ? 'EN → ΕΛ' : 'ΕΛ → EN'}
+              {locale === 'en' ? 'EN' : 'ΕΛ'}
             </button>
 
             {/* Datasource selector */}
@@ -1132,14 +1262,32 @@ export default function App() {
           </div>
 
           {/* Panel header */}
-          <div style={{ padding: '1.5rem', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '1rem 1.5rem', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 500, color: T.textPri, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <BarChart2 size={20} color={T.purpleHi} /> {t.dataInspector}
             </h2>
-            <button onClick={() => setActiveIndex(null)} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', transition: 'color 0.2s', lineHeight: 0 }}
-                    onMouseOver={e => e.currentTarget.style.color = T.textPri} onMouseOut={e => e.currentTarget.style.color = T.textMuted}>
-              <X size={22} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <button
+                onClick={() => {
+                  const chatTitle = chats[activeChatId]?.title ?? 'Data Report';
+                  const html = generateHtmlReport(activeComponents, chatTitle);
+                  const win  = window.open('', '_blank');
+                  win.document.write(html);
+                  win.document.close();
+                  win.focus();
+                }}
+                title="Download / Print report"
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 6, border: `1px solid ${T.border}`, background: T.surface, color: T.textMuted, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 500, transition: 'all 0.15s' }}
+                onMouseOver={e => { e.currentTarget.style.borderColor = T.purpleSoft; e.currentTarget.style.color = T.textPri; }}
+                onMouseOut={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.textMuted; }}>
+                <Share2 size={14} /> Share
+              </button>
+              <button onClick={() => updateChat(activeChatId, { activeIndex: null })}
+                      style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', transition: 'color 0.2s', lineHeight: 0, padding: 4 }}
+                      onMouseOver={e => e.currentTarget.style.color = T.textPri} onMouseOut={e => e.currentTarget.style.color = T.textMuted}>
+                <X size={22} />
+              </button>
+            </div>
           </div>
 
           {/* Panel body */}
