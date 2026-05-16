@@ -34,6 +34,10 @@ JSONL_PATH: Path = DATA_DIR / "conversations.jsonl"
 AZURE_OPENAI_KEY: str = os.getenv("AZURE_OPENAI_KEY", "")
 AZURE_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
 AZURE_DEPLOYMENT: str = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
+# Smaller, cheaper deployment used for the self-critique pass and
+# definitional-question routing. Falls back to the main deployment
+# when not configured, so multi-tenancy/critique still work in dev.
+AZURE_DEPLOYMENT_MINI: str = os.getenv("AZURE_OPENAI_DEPLOYMENT_MINI", "") or AZURE_DEPLOYMENT
 AZURE_API_VERSION: str = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
 
 # ---------------------------------------------------------------------------

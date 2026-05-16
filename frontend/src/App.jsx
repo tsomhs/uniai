@@ -10,7 +10,7 @@ import {
   Send, User, Bot, Loader2, X, BarChart2, Paperclip, Check, Sparkles,
   Database, Upload, Plus, Trash2, ChevronDown, Link,
   GripVertical, Menu, MessageSquare, ChevronRight, ChevronLeft,
-  Download, Copy, Share2, LogOut,
+  Download, Copy, Share2, LogOut, BookOpen,
 } from 'lucide-react';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -270,11 +270,51 @@ function generateHtmlReport(components, title) {
 
 // ─── Data-citation modal ──────────────────────────────────────────────────────
 
-function DataCitationModal({ title, data, sql, onClose }) {
+function SourcePopover({ source, onClose }) {
+  const [content, setContent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState('');
+
+  useEffect(() => {
+    const [file, anchor] = source.split('#');
+    if (!file || !anchor) { setError('Malformed citation.'); setLoading(false); return; }
+    fetch(`http://localhost:8000/api/source/section?file=${encodeURIComponent(file)}&anchor=${encodeURIComponent(anchor)}`, {
+      credentials: 'include',
+    })
+      .then(async r => {
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.detail || `Could not load (${r.status})`);
+        }
+        return r.json();
+      })
+      .then(d => { setContent(d); setLoading(false); })
+      .catch(err => { setError(err.message); setLoading(false); });
+  }, [source]);
+
+  return (
+    <div style={{ marginTop: 8, borderRadius: 10, border: `1px solid ${T.purple}50`, background: T.bg, overflow: 'hidden' }}>
+      <div style={{ padding: '8px 12px', borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: `${T.purple}14` }}>
+        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: T.purpleSoft, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <BookOpen size={12} /> {source}
+        </span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', display: 'flex' }}><X size={14} /></button>
+      </div>
+      <div style={{ padding: '10px 14px', maxHeight: 260, overflowY: 'auto', fontSize: '0.78rem', color: T.textPri, lineHeight: 1.55, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        {loading && <span style={{ color: T.textDim }}>Loading…</span>}
+        {error   && <span style={{ color: '#fca5a5' }}>{error}</span>}
+        {content && content.content}
+      </div>
+    </div>
+  );
+}
+
+function DataCitationModal({ title, data, sql, sources, onClose }) {
   const [view, setView]           = useState('table'); // 'table' | 'browse' | 'json'
   const [rowIndex, setRowIndex]   = useState(0);
   const [sqlCopied, setSqlCopied] = useState(false);
   const [dataCopied, setDataCopied] = useState(false);
+  const [openSource, setOpenSource] = useState(null);
 
   const cols  = data?.length ? Object.keys(data[0]) : [];
   const total = data?.length ?? 0;
@@ -359,6 +399,43 @@ function DataCitationModal({ title, data, sql, onClose }) {
                 </button>
               </div>
               <pre style={{ margin: 0, padding: '0.75rem 1rem', borderRadius: 10, background: T.bg, border: `1px solid ${T.border}`, fontSize: '0.76rem', color: '#a5f3fc', overflowX: 'auto', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{sql}</pre>
+            </div>
+          )}
+
+          {/* Sources section */}
+          {Array.isArray(sources) && sources.length > 0 && (
+            <div style={{ padding: '0.85rem 1.25rem', borderBottom: `1px solid ${T.border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <BookOpen size={12} color={T.purpleSoft} />
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.textDim }}>
+                  Sources ({sources.length})
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {sources.map((src, i) => {
+                  const active = openSource === src;
+                  return (
+                    <button key={i}
+                      onClick={() => setOpenSource(active ? null : src)}
+                      title={`Open ${src}`}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        padding: '4px 10px', borderRadius: 999,
+                        border: `1px solid ${active ? T.purple : T.border2}`,
+                        background: active ? `${T.purple}25` : T.bg,
+                        color: active ? T.purpleHi : T.purpleSoft,
+                        cursor: 'pointer', fontSize: '0.72rem',
+                        fontFamily: 'ui-monospace, Menlo, monospace',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseOver={e => { if (!active) { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleHi; } }}
+                      onMouseOut={e =>  { if (!active) { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.purpleSoft; } }}>
+                      <BookOpen size={11} /> {src}
+                    </button>
+                  );
+                })}
+              </div>
+              {openSource && <SourcePopover source={openSource} onClose={() => setOpenSource(null)} />}
             </div>
           )}
 
@@ -460,7 +537,7 @@ function DataCitationModal({ title, data, sql, onClose }) {
 
 // ─── Chart action toolbar ─────────────────────────────────────────────────────
 
-function ChartToolbar({ containerRef, title, data, sql }) {
+function ChartToolbar({ containerRef, title, data, sql, sources }) {
   const [copied, setCopied]   = useState(false);
   const [showCite, setShowCite] = useState(false);
 
@@ -480,7 +557,7 @@ function ChartToolbar({ containerRef, title, data, sql }) {
 
   return (
     <>
-      {showCite && <DataCitationModal title={title} data={data} sql={sql} onClose={() => setShowCite(false)} />}
+      {showCite && <DataCitationModal title={title} data={data} sql={sql} sources={sources} onClose={() => setShowCite(false)} />}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.4rem', marginTop: '0.5rem' }}>
         {(sql || data?.length) && (
           <button style={{ ...btnStyle, borderColor: T.border2, color: T.purpleSoft }} onClick={() => setShowCite(true)}
@@ -509,12 +586,12 @@ function ChartToolbar({ containerRef, title, data, sql }) {
   );
 }
 
-function ChartWrapper({ title, data, sql, children }) {
+function ChartWrapper({ title, data, sql, sources, children }) {
   const ref = useRef(null);
   return (
     <div ref={ref}>
       {children}
-      <ChartToolbar containerRef={ref} title={title} data={data} sql={sql} />
+      <ChartToolbar containerRef={ref} title={title} data={data} sql={sql} sources={sources} />
     </div>
   );
 }
@@ -565,7 +642,7 @@ function PieComponent({ component }) {
     return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700}>{((value / total) * 100).toFixed(1)}%</text>;
   };
   return (
-    <ChartWrapper title={title} data={data} sql={component.sql}>
+    <ChartWrapper title={title} data={data} sql={component.sql} sources={component.sources}>
       <div style={{ marginTop: '1rem' }}>
         <ChartHeader title={title} subtitle={subtitle} />
         <ResponsiveContainer width="100%" height={280}>
@@ -590,7 +667,7 @@ function BarComponent({ component }) {
   const rotate = data.length > 7;
   const domain = fmt?.unit === '%' ? [0, 1] : ['auto', 'auto'];
   return (
-    <ChartWrapper title={title} data={data} sql={component.sql}>
+    <ChartWrapper title={title} data={data} sql={component.sql} sources={component.sources}>
       <div style={{ marginTop: '1rem' }}>
         <ChartHeader title={title} subtitle={subtitle} />
         <ResponsiveContainer width="100%" height={rotate ? 350 : 285}>
@@ -615,7 +692,7 @@ function BarComponent({ component }) {
 function LineComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
   return (
-    <ChartWrapper title={title} data={data} sql={component.sql}>
+    <ChartWrapper title={title} data={data} sql={component.sql} sources={component.sources}>
       <div style={{ marginTop: '1rem' }}>
         <ChartHeader title={title} subtitle={subtitle} />
         <ResponsiveContainer width="100%" height={260}>
@@ -637,7 +714,7 @@ function LineComponent({ component }) {
 function AreaComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
   return (
-    <ChartWrapper title={title} data={data} sql={component.sql}>
+    <ChartWrapper title={title} data={data} sql={component.sql} sources={component.sources}>
       <div style={{ marginTop: '1rem' }}>
         <ChartHeader title={title} subtitle={subtitle} />
         <ResponsiveContainer width="100%" height={260}>
@@ -694,7 +771,7 @@ function TableComponent({ component }) {
 function ScatterComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
   return (
-    <ChartWrapper title={title} data={data} sql={component.sql}>
+    <ChartWrapper title={title} data={data} sql={component.sql} sources={component.sources}>
       <div style={{ marginTop: '1rem' }}>
         <ChartHeader title={title} subtitle={subtitle} />
         <ResponsiveContainer width="100%" height={280}>
@@ -729,7 +806,7 @@ function ScatterComponent({ component }) {
 function RadarComponent({ component }) {
   const { title, subtitle, data } = component;
   return (
-    <ChartWrapper title={title} data={data} sql={component.sql}>
+    <ChartWrapper title={title} data={data} sql={component.sql} sources={component.sources}>
       <div style={{ marginTop: '1rem' }}>
         <ChartHeader title={title} subtitle={subtitle} />
         <ResponsiveContainer width="100%" height={300}>
@@ -749,7 +826,7 @@ function RadarComponent({ component }) {
 // ─── Heatmap ──────────────────────────────────────────────────────────────────
 
 function HeatmapComponent({ component }) {
-  const { title, subtitle, data, sql } = component;
+  const { title, subtitle, data, sql, sources } = component;
   const ref = useRef(null);
   const [showCite, setShowCite] = useState(false);
   if (!data?.length) return null;
@@ -761,7 +838,7 @@ function HeatmapComponent({ component }) {
   const alpha = (v) => 0.08 + 0.82 * (v - minV) / (maxV - minV || 1);
   return (
     <div ref={ref} style={{ marginTop: '1rem' }}>
-      {showCite && <DataCitationModal title={title} data={data} sql={sql} onClose={() => setShowCite(false)} />}
+      {showCite && <DataCitationModal title={title} data={data} sql={sql} sources={sources} onClose={() => setShowCite(false)} />}
       <ChartHeader title={title} subtitle={subtitle} />
       <div style={{ overflowX: 'auto', marginTop: 12 }}>
         <table style={{ borderCollapse: 'separate', borderSpacing: 3, fontSize: '0.72rem' }}>
@@ -796,7 +873,7 @@ function HeatmapComponent({ component }) {
           <div style={{ width: 80, height: 8, borderRadius: 4, background: 'linear-gradient(to right, rgba(147,51,234,0.08), rgba(147,51,234,0.9))' }} />
           <span>high</span>
         </div>
-        <ChartToolbar containerRef={ref} title={title} data={data} sql={sql} />
+        <ChartToolbar containerRef={ref} title={title} data={data} sql={sql} sources={sources} />
       </div>
     </div>
   );
@@ -825,7 +902,7 @@ function CandlestickComponent({ component }) {
   const yTicks = Array.from({ length: 5 }, (_, i) => lo + (hi - lo) * i / 4);
 
   return (
-    <ChartWrapper title={title} data={data} sql={component.sql}>
+    <ChartWrapper title={title} data={data} sql={component.sql} sources={component.sources}>
       <div style={{ marginTop: '1rem' }}>
         <ChartHeader title={title} subtitle={subtitle} />
         <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
@@ -867,6 +944,63 @@ function CandlestickComponent({ component }) {
 }
 
 // ─── Explanation accordion ────────────────────────────────────────────────────
+
+function CritiqueBadge({ critique }) {
+  const [open, setOpen] = useState(false);
+  if (!critique || !critique.verdict) return null;
+
+  const palette = {
+    ok:       { bg: '#0a3622', border: '#10b981', fg: '#86efac', icon: '✓', label: 'AI review passed' },
+    minor:    { bg: '#3b2e0a', border: '#f59e0b', fg: '#fcd34d', icon: '!',  label: 'Reviewed — minor note' },
+    critical: { bg: '#450a0a', border: '#ef4444', fg: '#fca5a5', icon: '⚠', label: 'Reviewed — needs attention' },
+  }[critique.verdict] || null;
+  if (!palette) return null;
+
+  const issueCount = critique.issues?.length ?? 0;
+  const expandable = issueCount > 0 || critique.suggestion;
+
+  return (
+    <div style={{ marginTop: 10, borderRadius: 10, border: `1px solid ${palette.border}55`, background: palette.bg, overflow: 'hidden' }}>
+      <button
+        type="button"
+        onClick={() => expandable && setOpen(v => !v)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '7px 11px', background: 'transparent', border: 'none',
+          color: palette.fg, fontSize: '0.78rem', fontWeight: 600,
+          cursor: expandable ? 'pointer' : 'default', textAlign: 'left',
+        }}
+      >
+        <span style={{ width: 18, height: 18, borderRadius: 999, background: `${palette.border}40`, color: palette.fg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 800, flexShrink: 0 }}>
+          {palette.icon}
+        </span>
+        <span style={{ flex: 1 }}>{palette.label}{issueCount > 0 ? ` · ${issueCount} issue${issueCount === 1 ? '' : 's'}` : ''}</span>
+        {expandable && (
+          <ChevronDown size={13} style={{ color: palette.fg, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+        )}
+      </button>
+      {open && expandable && (
+        <div style={{ padding: '0 11px 10px', borderTop: `1px solid ${palette.border}30` }}>
+          {issueCount > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18, color: palette.fg, fontSize: '0.76rem', lineHeight: 1.55 }}>
+              {critique.issues.map((it, i) => <li key={i}>{it}</li>)}
+            </ul>
+          )}
+          {critique.suggestion && (
+            <div style={{ marginTop: 8, fontSize: '0.74rem', color: palette.fg, fontStyle: 'italic' }}>
+              <strong style={{ fontStyle: 'normal' }}>Suggestion:</strong> {critique.suggestion}
+            </div>
+          )}
+          {critique.model && (
+            <div style={{ marginTop: 6, fontSize: '0.66rem', color: palette.fg, opacity: 0.55 }}>
+              Reviewed by {critique.model}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ExplanationAccordion({ type, explanation }) {
   const [open, setOpen] = useState(false);
@@ -1533,7 +1667,7 @@ export default function App({ user, onLogout }) {
 
           } else if (event.type === 'result') {
             const components   = event.components?.length ? event.components : null;
-            const assistantMsg = { role: 'assistant', text: event.reply || 'Here is the data you requested.', components, suggestions: event.suggestions || [], dsName: snapDs?.name, dsType: snapDs?.type };
+            const assistantMsg = { role: 'assistant', text: event.reply || 'Here is the data you requested.', components, suggestions: event.suggestions || [], dsName: snapDs?.name, dsType: snapDs?.type, critique: event._critique ?? null };
             updateChat(chatId, c => {
               const next = [...(c.messages ?? []), assistantMsg];
               return { ...c, messages: next, sessionId: event.session_id ?? c.sessionId, activeIndex: components ? next.length - 1 : c.activeIndex };
@@ -1686,6 +1820,8 @@ export default function App({ user, onLogout }) {
                       {/* Bubble */}
                       <div style={{ maxWidth: '85%', padding: '1.25rem', borderRadius: 16, backgroundColor: msg.role === 'user' ? T.userBg : T.surface, border: msg.role === 'user' ? 'none' : `1px solid ${T.border}`, borderTopRightRadius: msg.role === 'user' ? 4 : 16, borderTopLeftRadius: msg.role === 'assistant' ? 4 : 16 }}>
                         {msg.text && <p style={{ margin: 0, lineHeight: 1.6, fontSize: '1rem', color: msg.role === 'user' ? T.userText : T.textPri }}>{msg.text}</p>}
+
+                        {msg.role === 'assistant' && msg.critique && <CritiqueBadge critique={msg.critique} />}
 
                         {/* Datasource badge */}
                         {msg.role === 'assistant' && msg.dsName && (

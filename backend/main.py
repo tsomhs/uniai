@@ -44,7 +44,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Literal, Optional
 
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -261,12 +261,49 @@ question was purely definitional with no natural follow-on.
         } | null
       } | null,
       "explanation": "<REQUIRED — one sentence explaining WHY this specific chart type was chosen over alternatives for this data>",
-      "sql": "<the exact SQL executed>"
+      "sql": "<the exact SQL executed>",
+      "sources": ["<file>#<heading-slug>", ...]
     }
   ],
   "chartType": "<type of first component, or null>",
   "chartData": [ <data array of first component, or null> ]
 }
+
+## Source citations — the `sources` field on each component
+
+Whenever your computation used material from `get_metrics_dictionary` or
+`get_schema_dictionary`, list the markdown sections you relied on in
+`sources`. This is how the user audits the answer.
+
+- Format every entry as `"<file>#<heading-slug>"`.
+- File is either `metrics_dictionary.md` or `schema.md` (exact filenames).
+- Heading slug = the `##` (or `###`) heading text, lowercased, backticks
+  stripped, punctuation removed, spaces replaced with hyphens.
+
+Available anchors:
+
+  metrics_dictionary.md              schema.md
+  ─────────────────────────────────  ─────────────────────────
+  volume                             metadata
+  outcomes                           analysis
+  quality                            transcript
+  time-efficiency                    evaluation-criteria
+  tool-reliability                   data-collection-fields
+  evaluation-criteria-pass-rates     intent-catalog
+  cost                               flat-views
+  cohort-behavioral                  v_conversations
+  slicing-dimensions-worth-knowing   v_turns
+                                     v_evaluations
+                                     v_data_collection
+                                     v_tool_calls
+
+Examples:
+- A containment-rate KPI → `["metrics_dictionary.md#outcomes", "schema.md#v_conversations"]`
+- A breakdown by detected_intent → `["schema.md#intent-catalog", "schema.md#v_turns"]`
+- An evaluation pass-rate chart → `["metrics_dictionary.md#evaluation-criteria-pass-rates", "schema.md#evaluation-criteria"]`
+
+Cite ONLY sections you actually used to ground the answer — do not pad.
+Return an empty array `[]` if the component required no dictionary lookup.
 
 Data shapes per type:
   kpi         → [{"name": "<label>", "value": <number>}]                (single row)
@@ -531,6 +568,85 @@ def current_user(session: Optional[str] = Cookie(None)) -> str:
     if not email or email not in _USERS:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return email
+
+
+# ---------------------------------------------------------------------------
+# Source citation — when the LLM consults the metrics or schema dictionary,
+# it attaches `sources: ["metrics_dictionary.md#outcomes", …]` to each
+# component. The frontend resolves these via /api/source/section so the user
+# can read the exact passage that grounded the answer.
+# ---------------------------------------------------------------------------
+
+_CITABLE_FILES: dict[str, Any] = {
+    "metrics_dictionary.md": config.METRICS_MD,
+    "schema.md":             config.SCHEMA_MD,
+}
+
+
+def _slugify_heading(text: str) -> str:
+    """Match the slug rules used by the prompt (lowercase, kebab, no markup)."""
+    s = text.lower().strip()
+    s = re.sub(r"`",        "",  s)      # drop code-span backticks
+    s = re.sub(r"[^\w\s-]", "",  s)      # drop punctuation
+    s = re.sub(r"\s+",      "-", s)      # spaces → hyphens
+    return s.strip("-")
+
+
+def _extract_section(markdown_text: str, anchor: str) -> Optional[str]:
+    """
+    Return the markdown block whose heading slugifies to `anchor`, from the
+    heading line up to (but not including) the next heading of equal or
+    higher level. Returns None if no heading matches.
+    """
+    target = anchor.lower().strip()
+    lines  = markdown_text.split("\n")
+
+    start_line: Optional[int] = None
+    start_level: Optional[int] = None
+
+    for i, line in enumerate(lines):
+        m = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
+        if m and _slugify_heading(m.group(2)) == target:
+            start_line  = i
+            start_level = len(m.group(1))
+            break
+
+    if start_line is None:
+        return None
+
+    end_line = len(lines)
+    for j in range(start_line + 1, len(lines)):
+        m = re.match(r"^(#{1,6})\s+", lines[j])
+        if m and len(m.group(1)) <= start_level:
+            end_line = j
+            break
+
+    return "\n".join(lines[start_line:end_line]).strip()
+
+
+@app.get("/api/source/section", tags=["source"])
+def get_source_section(
+    file:   str = Query(..., description="Source filename, e.g. 'metrics_dictionary.md'"),
+    anchor: str = Query(..., description="Heading slug, e.g. 'outcomes' or 'v_conversations'"),
+    user:   str = Depends(current_user),
+) -> dict[str, Any]:
+    """Fetch a single section from a citable markdown source by heading slug."""
+    path = _CITABLE_FILES.get(file)
+    if path is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown source file. Citable: {sorted(_CITABLE_FILES)}",
+        )
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"{file} not present on the server.")
+
+    section = _extract_section(path.read_text(), anchor)
+    if section is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Section '{anchor}' not found in {file}.",
+        )
+    return {"file": file, "anchor": anchor, "content": section}
 
 
 # ---------------------------------------------------------------------------
@@ -907,6 +1023,120 @@ def _build_prompt_messages(
     return messages
 
 
+# ---------------------------------------------------------------------------
+# Self-critique pass — after the main model produces a dashboard, run a
+# cheaper "second pair of eyes" model that reviews the SQL + result for
+# correctness. Surfaces issues to the UI without blocking the response.
+# ---------------------------------------------------------------------------
+
+CRITIQUE_SYSTEM_PROMPT = """\
+You are a senior data analyst doing a quick correctness review of another
+analyst's dashboard answer. You see the user's original question and a
+compact summary of each component (title, type, the SQL that produced
+the data, the data itself, and the analyst's stated reasoning).
+
+Your job is to spot mistakes that would mislead the user. Focus on:
+- Wrong column (typo, semantically wrong field for the metric requested)
+- Wrong time range (relative dates resolved against the wrong "today")
+- Off-by-one window errors (week boundaries, inclusive/exclusive end dates)
+- Aggregation errors (averaging an already-averaged rate, summing percentages)
+- A proxy that doesn't really answer the question that was asked
+- Charts whose data shape doesn't actually support the conclusion in `reply`
+
+Output ONLY this raw JSON, no markdown fence:
+
+{
+  "verdict":    "ok" | "minor" | "critical",
+  "issues":     ["<concrete issue, <=140 chars>", ...],
+  "suggestion": "<one short sentence on what to do differently, or null if verdict is ok>"
+}
+
+Be terse. If everything looks correct, return verdict="ok" with empty issues
+and suggestion=null. Use "critical" only when the answer would actively
+mislead the user; "minor" for refinements that wouldn't change the conclusion.
+"""
+
+
+def _critique_payload(user_question: str, parsed: dict[str, Any]) -> str:
+    """Compact JSON the critic model sees — strips heavy fields."""
+    components = parsed.get("components") or []
+    summary = []
+    for c in components:
+        data = c.get("data") or []
+        # Truncate large result sets so the critic stays cheap & fast.
+        truncated = data[:25] if isinstance(data, list) else data
+        summary.append({
+            "type":        c.get("type"),
+            "title":       c.get("title"),
+            "subtitle":    c.get("subtitle"),
+            "explanation": c.get("explanation"),
+            "sql":         c.get("sql"),
+            "data_sample": truncated,
+            "row_count":   len(data) if isinstance(data, list) else None,
+        })
+    return json.dumps({
+        "user_question": user_question,
+        "reply":         parsed.get("reply"),
+        "components":    summary,
+    }, default=str, indent=2)
+
+
+async def _critique_response(
+    user_question: str,
+    parsed:        dict[str, Any],
+) -> Optional[dict[str, Any]]:
+    """
+    Run the validated dashboard through the cheap critic model.
+    Returns {verdict, issues, suggestion} or None if the critic call failed.
+    """
+    if not parsed.get("components"):
+        return None
+    try:
+        completion = await asyncio.to_thread(
+            aoai.chat.completions.create,
+            model=config.AZURE_DEPLOYMENT_MINI,
+            messages=[
+                {"role": "system", "content": CRITIQUE_SYSTEM_PROMPT},
+                {"role": "user",   "content": _critique_payload(user_question, parsed)},
+            ],
+            temperature=0.0,
+            max_tokens=400,
+        )
+        raw = _strip_fence((completion.choices[0].message.content or "").strip())
+        critique = json.loads(raw)
+        if critique.get("verdict") not in {"ok", "minor", "critical"}:
+            return None
+        critique.setdefault("issues",     [])
+        critique.setdefault("suggestion", None)
+        critique["model"] = config.AZURE_DEPLOYMENT_MINI
+        return critique
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Critique call failed: %s", exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Model routing — purely definitional questions ("what is containment?") go
+# to the mini deployment; anything that needs data goes to the main one.
+# Keeps demo latency/cost down on cheap questions without risking the
+# accuracy of real analytical queries.
+# ---------------------------------------------------------------------------
+
+_DEFINITIONAL_TRIGGERS = (
+    "what is ", "what's ", "what does ", "define ", "definition of ",
+    "explain what ", "what do you mean by ",
+)
+
+
+def _pick_model_for(message: str) -> str:
+    """Return a deployment name. Conservative: only routes obvious lookups."""
+    msg = message.lower().strip()
+    if len(msg) <= 110 and any(msg.startswith(p) or f" {p}" in f" {msg}"
+                               for p in _DEFINITIONAL_TRIGGERS):
+        return config.AZURE_DEPLOYMENT_MINI
+    return config.AZURE_DEPLOYMENT
+
+
 async def _run_chat_stream(
     message:       str,
     session_id:    str,
@@ -953,13 +1183,19 @@ async def _run_chat_stream(
         is_default=is_default,
     )
 
+    chosen_model = _pick_model_for(message)
+    logger.info(
+        "[%s] routed to %s%s",
+        session_id[:8], chosen_model,
+        " (definitional)" if chosen_model == config.AZURE_DEPLOYMENT_MINI else "",
+    )
     yield "progress", {"message": "Analysing your question…"}
 
     async with _mcp_session(db_path=db_path) as mcp:
         for _ in range(config.MAX_TOOL_ITERATIONS):
             completion = await asyncio.to_thread(
                 aoai.chat.completions.create,
-                model=config.AZURE_DEPLOYMENT,
+                model=chosen_model,
                 messages=messages,
                 tools=tool_schemas,
                 tool_choice="auto",
@@ -1009,6 +1245,21 @@ async def _run_chat_stream(
                 if session_id not in SESSIONS:
                     _evict_sessions()
                 SESSIONS[session_id] = history[-(config.MAX_SESSION_HISTORY * 2):]
+
+                # Second-pass review by the cheap critic model. Surfaces wrong
+                # columns / wrong time windows / proxy mismatches that the
+                # main model didn't catch. Non-blocking on failure.
+                if parsed.get("components"):
+                    yield "progress", {"message": "Reviewing answer for accuracy…"}
+                    critique = await _critique_response(message, parsed)
+                    if critique:
+                        parsed["_critique"] = critique
+                        logger.info(
+                            "[%s] critique verdict=%s issues=%d",
+                            session_id[:8],
+                            critique.get("verdict"),
+                            len(critique.get("issues") or []),
+                        )
 
                 yield "result", parsed
                 return
@@ -1070,7 +1321,8 @@ async def health() -> dict[str, Any]:
     """Liveness probe — returns deployment name so callers can verify config."""
     return {
         "ok": True,
-        "deployment": config.AZURE_DEPLOYMENT,
+        "deployment":      config.AZURE_DEPLOYMENT,
+        "deployment_mini": config.AZURE_DEPLOYMENT_MINI,
         "db": str(config.DB_PATH),
         "active_sessions": len(SESSIONS),
     }
