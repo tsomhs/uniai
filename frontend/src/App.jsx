@@ -4,7 +4,7 @@ import {
   LineChart, Line, PieChart, Pie, Cell, Legend,
   AreaChart, Area, ReferenceLine,
 } from 'recharts';
-import { Send, User, Bot, Loader2, X, BarChart2, Paperclip, Check } from 'lucide-react';
+import { Send, User, Bot, Loader2, X, BarChart2, Paperclip, Check, Sparkles } from 'lucide-react';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
@@ -386,6 +386,7 @@ export default function App() {
   const [currentStep,      setCurrentStep]      = useState('');
   const currentStepRef = useRef('');
   const messagesEndRef = useRef(null);
+  const inputRef       = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -462,6 +463,7 @@ export default function App() {
               role: 'assistant',
               text: event.reply || 'Here is the data you requested.',
               components,
+              suggestions: event.suggestions || [],
             }]);
             if (components) setActiveComponents(components);
 
@@ -569,6 +571,47 @@ export default function App() {
                       {panelLabel(msg.components)}
                     </button>
                   )}
+
+                  {/* Suggested follow-up questions */}
+                  {msg.role === 'assistant' && msg.suggestions?.length > 0 && (
+                    <div style={{ marginTop: '1.1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5,
+                                    marginBottom: '0.5rem' }}>
+                        <Sparkles size={11} color={T.textDim} />
+                        <span style={{ fontSize: '0.68rem', fontWeight: 600, color: T.textDim,
+                                       textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                          Explore further
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {msg.suggestions.map((q, i) => (
+                          <button key={i} onClick={() => {
+                            setInput(q);
+                            inputRef.current?.focus();
+                          }} style={{
+                            textAlign: 'left', background: 'none', cursor: 'pointer',
+                            padding: '0.45rem 0.75rem', borderRadius: 8,
+                            border: `1px solid ${T.border2}`,
+                            color: T.textMuted, fontSize: '0.82rem',
+                            lineHeight: 1.4, transition: 'all 0.18s',
+                          }}
+                            onMouseOver={e => {
+                              e.currentTarget.style.borderColor = T.purple;
+                              e.currentTarget.style.color = T.purpleSoft;
+                              e.currentTarget.style.background = `${T.purple}14`;
+                            }}
+                            onMouseOut={e => {
+                              e.currentTarget.style.borderColor = T.border2;
+                              e.currentTarget.style.color = T.textMuted;
+                              e.currentTarget.style.background = 'none';
+                            }}
+                          >
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -623,6 +666,7 @@ export default function App() {
             </button>
 
             <input
+              ref={inputRef}
               type="text" value={input} onChange={e => setInput(e.target.value)}
               placeholder="Ask a question about your data…"
               disabled={isLoading}

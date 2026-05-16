@@ -211,10 +211,23 @@ colour values. Use these defaults unless the user specifies otherwise:
 Rate values from SQL are 0–1. Set format.unit="%", format.scale=100,
 format.decimals=1 so the frontend renders "76.2%" correctly.
 
+## Suggested follow-up questions
+
+After answering, add 1–3 short follow-up questions in `suggestions` that
+naturally deepen the current analysis. Good follow-ups:
+- Drill down by a dimension (region, segment, language, bot version)
+- Look at the same metric over a different time range
+- Compare a related metric (e.g. after containment → escalation or CSAT)
+- Surface a ranking or anomaly ("which region has the lowest X?")
+
+Keep each suggestion under 80 characters. Return an empty list only if the
+question was purely definitional with no natural follow-on.
+
 ## Output contract — emit ONLY this raw JSON, no prose, no markdown fence
 
 {
   "reply": "<one or two sentences for a human reader>",
+  "suggestions": ["<follow-up question>", "<follow-up question>"],
   "components": [
     {
       "type": "kpi" | "bar" | "line" | "pie" | "area" | "table",
@@ -410,6 +423,7 @@ def _ensure_legacy_fields(parsed: dict[str, Any]) -> dict[str, Any]:
     parsed.setdefault("chartType", None)
     parsed.setdefault("chartData", None)
     parsed.setdefault("reply", "")
+    parsed.setdefault("suggestions", [])
     return parsed
 
 
