@@ -1,66 +1,48 @@
 """
 MCP server for the banking voicebot dataset.
 
-Exposes read-only tools over a pre-built DuckDB (do not regenerate the data):
-  - list_tables           : enumerate the flat views and the raw table
-  - get_table_schema      : column dictionary for a single table/view
-  - get_dataset_date_range: the min/max start_date in v_conversations
-                            ("today" for the dataset = max start_date)
-  - get_metrics_dictionary: canonical metric definitions (loaded from the
-                            data/metrics_dictionary.md shipped with the dataset
-                            so every team computes the same number)
-  - get_schema_dictionary : data/schema.md, the column dictionary
-  - execute_sql           : run a single read-only SELECT/WITH query
+Exposes six read-only tools over the pre-built DuckDB at backend/data/:
+  - list_tables            enumerate the flat views and the raw table
+  - get_table_schema       column dictionary for a single table/view
+  - get_dataset_date_range min/max start_date ("today" = max date)
+  - get_metrics_dictionary canonical KPI formulas from metrics_dictionary.md
+  - get_schema_dictionary  column + intent catalog from schema.md
+  - execute_sql            read-only SELECT/WITH queries, up to MAX_SQL_ROWS rows
 
-The LLM is expected to:
-  1. read get_metrics_dictionary to anchor on canonical formulas,
-  2. call get_table_schema for any view it queries,
-  3. emit a single execute_sql call per chart component,
-  4. shape the result into the dashboard-component contract that main.py asks
-     for in its system prompt.
+Transport: stdio (spawned by main.py per chat request).
 """
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import duckdb
 from mcp.server.fastmcp import FastMCP
 
+from config import DB_PATH, MAX_SQL_ROWS, METRICS_MD, SCHEMA_MD
+
 mcp = FastMCP("Banking Voicebot Data Server")
-
-BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "conversations.duckdb"
-
-# The dataset repo ships the canonical metric definitions + column dictionary
-# as markdown. Resolve them so the LLM can read the same source of truth a
-# human would. We resolve at import-time so a misplaced repo fails loudly.
-DATA_DOCS_DIR = BASE_DIR.parent.parent / "makeathon-NR2Dashboard-main" / "data"
-METRICS_MD = DATA_DOCS_DIR / "metrics_dictionary.md"
-SCHEMA_MD = DATA_DOCS_DIR / "schema.md"
-
 con = duckdb.connect(str(DB_PATH), read_only=True)
 
 
 def _safe_select(query: str) -> bool:
+    """Return True only for read-only SELECT/WITH statements."""
     q = query.strip().rstrip(";").lstrip()
     upper = q.upper()
-    if upper.startswith("SELECT") or upper.startswith("WITH"):
-        # Block obvious write keywords even inside a WITH/CTE.
-        banned = (" INSERT ", " UPDATE ", " DELETE ", " DROP ", " ALTER ",
-                  " CREATE ", " ATTACH ", " COPY ", " PRAGMA ", " EXPORT ")
-        padded = f" {upper} "
-        return not any(b in padded for b in banned)
-    return False
+    if not (upper.startswith("SELECT") or upper.startswith("WITH")):
+        return False
+    banned = (" INSERT ", " UPDATE ", " DELETE ", " DROP ", " ALTER ",
+              " CREATE ", " ATTACH ", " COPY ", " PRAGMA ", " EXPORT ")
+    padded = f" {upper} "
+    return not any(b in padded for b in banned)
 
 
 @mcp.tool()
 def list_tables() -> str:
-    """List all tables and views available in the DuckDB database.
+    """List all tables and views in the DuckDB database.
 
-    Returns a JSON array of {name, type}. Prefer the `v_*` views — they flatten
-    the nested raw structure for the most common slices.
+    Returns a JSON array of {name, type}. Prefer the v_* views — they flatten
+    the nested raw structure for the most common access patterns.
     """
     rows = con.execute("""
         SELECT table_name AS name,
@@ -74,13 +56,12 @@ def list_tables() -> str:
 
 @mcp.tool()
 def get_table_schema(table_name: str) -> str:
-    """Get the column names and data types of a specific table or view.
+    """Get the columns and data types of a specific table or view.
 
     Returns a JSON array of {column_name, column_type, null, key, default, extra}.
+    Validates the name against the catalog to prevent SQL injection via identifiers.
     """
     try:
-        # parameterised identifier — DESCRIBE doesn't accept ? binds, so we
-        # validate against the known catalog first.
         catalog = {r[0] for r in con.execute(
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'"
         ).fetchall()}
@@ -90,17 +71,16 @@ def get_table_schema(table_name: str) -> str:
         rows = con.execute(f'DESCRIBE "{table_name}"').fetchall()
         cols = [d[0] for d in con.description]
         return json.dumps([dict(zip(cols, r)) for r in rows], default=str)
-    except Exception as e:  # noqa: BLE001
-        return json.dumps({"error": str(e)})
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": str(exc)})
 
 
 @mcp.tool()
 def get_dataset_date_range() -> str:
-    """Return the dataset's min/max `start_date` plus the count of conversations.
+    """Return the dataset's min/max start_date and total conversation count.
 
-    For relative-date questions ("this week", "yesterday", "last 30 days"),
-    treat `max_date` as the dataset's "today" — the synthetic data is frozen,
-    not live.
+    For relative-date questions ("this week", "last 30 days"), use max_date as
+    the dataset's "today" — the data is synthetic and frozen, not live.
     """
     row = con.execute(
         "SELECT MIN(start_date), MAX(start_date), COUNT(*) FROM v_conversations"
@@ -115,11 +95,11 @@ def get_dataset_date_range() -> str:
 
 @mcp.tool()
 def get_metrics_dictionary() -> str:
-    """Return the canonical metrics dictionary (containment, escalation, CSAT,
-    AHT, FCR, etc.) verbatim from `data/metrics_dictionary.md`.
+    """Return the canonical metrics dictionary verbatim from data/metrics_dictionary.md.
 
-    Read this BEFORE composing SQL for any KPI — every team must compute the
-    same number for the same word.
+    Covers containment rate, escalation rate, abandonment, CSAT, AHT, FCR,
+    tool success rate, cost per call, and repeat-caller rate.
+    Call this before composing SQL for any KPI so the formula is authoritative.
     """
     if not METRICS_MD.exists():
         return json.dumps({"error": f"metrics_dictionary.md not found at {METRICS_MD}"})
@@ -128,9 +108,10 @@ def get_metrics_dictionary() -> str:
 
 @mcp.tool()
 def get_schema_dictionary() -> str:
-    """Return the column dictionary (`data/schema.md`) — the authoritative
-    reference for what every field means, the intent catalog, and the
-    `v_*` flat views.
+    """Return the column dictionary verbatim from data/schema.md.
+
+    Documents every column in every view, the intent catalog, evaluation
+    criteria, and data-collection fields. Use before querying unfamiliar columns.
     """
     if not SCHEMA_MD.exists():
         return json.dumps({"error": f"schema.md not found at {SCHEMA_MD}"})
@@ -139,20 +120,20 @@ def get_schema_dictionary() -> str:
 
 @mcp.tool()
 def execute_sql(query: str) -> str:
-    """Execute a single read-only SELECT (or WITH … SELECT) against the DuckDB.
+    """Execute a single read-only SELECT or WITH … SELECT against the DuckDB.
 
-    Returns up to 500 rows as a JSON array of objects. Use this once per
-    chart component — shape the SELECT so the result is already in the
-    chart-ready form (label/value, or x/y for time series).
+    Returns up to MAX_SQL_ROWS rows as a JSON array of objects. Shape the
+    SELECT so the result is already chart-ready — name/value for categorical
+    charts, x/y for time-series — so no post-processing is needed.
     """
     if not _safe_select(query):
         return json.dumps({"error": "Only read-only SELECT/WITH queries are allowed."})
     try:
-        rows = con.execute(query).fetchmany(500)
+        rows = con.execute(query).fetchmany(MAX_SQL_ROWS)
         cols = [d[0] for d in con.description]
         return json.dumps([dict(zip(cols, r)) for r in rows], default=str)
-    except Exception as e:  # noqa: BLE001
-        return json.dumps({"error": str(e)})
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": str(exc)})
 
 
 if __name__ == "__main__":

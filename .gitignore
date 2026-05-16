@@ -1,2 +1,14 @@
 .DS_Store
 .env
+__pycache__/
+*.py[cod]
+*.pyo
+
+# large dataset files — copy manually, do not commit
+backend/data/conversations.duckdb
+backend/data/conversations.jsonl
+
+# Python virtual environment
+univenv/
+.venv/
+venv/
