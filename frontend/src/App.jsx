@@ -950,37 +950,89 @@ function CritiqueBadge({ critique }) {
   if (!critique || !critique.verdict) return null;
 
   const palette = {
-    ok:       { bg: '#0a3622', border: '#10b981', fg: '#86efac', icon: '✓', label: 'AI review passed' },
-    minor:    { bg: '#3b2e0a', border: '#f59e0b', fg: '#fcd34d', icon: '!',  label: 'Reviewed — minor note' },
+    ok:       { bg: '#0a3622', border: '#10b981', fg: '#86efac', icon: '✓', label: 'LLM-As-Judge Review Passed!' },
+    minor:    { bg: '#3b2e0a', border: '#f59e0b', fg: '#fcd34d', icon: '!', label: 'Reviewed — minor note' },
     critical: { bg: '#450a0a', border: '#ef4444', fg: '#fca5a5', icon: '⚠', label: 'Reviewed — needs attention' },
   }[critique.verdict] || null;
   if (!palette) return null;
 
   const issueCount = critique.issues?.length ?? 0;
-  const expandable = issueCount > 0 || critique.suggestion;
+  const hasDetail  = issueCount > 0 || !!critique.suggestion || !!critique.summary;
+  const isOk       = critique.verdict === 'ok';
 
+  // OK state → compact icon-only chip with tooltip; click expands to show why.
+  if (isOk) {
+    return (
+      <div style={{ marginTop: 10 }}>
+        <button
+          type="button"
+          onClick={() => hasDetail && setOpen(v => !v)}
+          title={palette.label}
+          aria-label={palette.label}
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 26, height: 26, borderRadius: 999,
+            border: `1px solid ${palette.border}55`, background: palette.bg,
+            color: palette.fg, fontWeight: 800, fontSize: '0.8rem',
+            cursor: hasDetail ? 'pointer' : 'default', transition: 'all 0.15s',
+          }}
+          onMouseOver={e => { e.currentTarget.style.borderColor = palette.border; }}
+          onMouseOut={e =>  { e.currentTarget.style.borderColor = `${palette.border}55`; }}
+        >
+          {palette.icon}
+        </button>
+        {open && hasDetail && (
+          <div style={{ marginTop: 6, borderRadius: 10, border: `1px solid ${palette.border}55`, background: palette.bg, padding: '8px 11px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: palette.fg }}>{palette.label}</span>
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.fg, opacity: 0.7, display: 'flex' }}>
+                <X size={13} />
+              </button>
+            </div>
+            {critique.summary && (
+              <div style={{ marginTop: 6, fontSize: '0.76rem', color: palette.fg, lineHeight: 1.5 }}>
+                {critique.summary}
+              </div>
+            )}
+            {critique.model && (
+              <div style={{ marginTop: 6, fontSize: '0.66rem', color: palette.fg, opacity: 0.55 }}>
+                Reviewed by {critique.model}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Minor / critical — full-width row, expandable to show issues + suggestion.
   return (
     <div style={{ marginTop: 10, borderRadius: 10, border: `1px solid ${palette.border}55`, background: palette.bg, overflow: 'hidden' }}>
       <button
         type="button"
-        onClick={() => expandable && setOpen(v => !v)}
+        onClick={() => hasDetail && setOpen(v => !v)}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 8,
           padding: '7px 11px', background: 'transparent', border: 'none',
           color: palette.fg, fontSize: '0.78rem', fontWeight: 600,
-          cursor: expandable ? 'pointer' : 'default', textAlign: 'left',
+          cursor: hasDetail ? 'pointer' : 'default', textAlign: 'left',
         }}
       >
         <span style={{ width: 18, height: 18, borderRadius: 999, background: `${palette.border}40`, color: palette.fg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 800, flexShrink: 0 }}>
           {palette.icon}
         </span>
         <span style={{ flex: 1 }}>{palette.label}{issueCount > 0 ? ` · ${issueCount} issue${issueCount === 1 ? '' : 's'}` : ''}</span>
-        {expandable && (
+        {hasDetail && (
           <ChevronDown size={13} style={{ color: palette.fg, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
         )}
       </button>
-      {open && expandable && (
+      {open && hasDetail && (
         <div style={{ padding: '0 11px 10px', borderTop: `1px solid ${palette.border}30` }}>
+          {critique.summary && (
+            <div style={{ marginTop: 8, fontSize: '0.76rem', color: palette.fg, lineHeight: 1.5 }}>
+              {critique.summary}
+            </div>
+          )}
           {issueCount > 0 && (
             <ul style={{ margin: '8px 0 0', paddingLeft: 18, color: palette.fg, fontSize: '0.76rem', lineHeight: 1.55 }}>
               {critique.issues.map((it, i) => <li key={i}>{it}</li>)}

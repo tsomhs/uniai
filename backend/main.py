@@ -1047,13 +1047,20 @@ Output ONLY this raw JSON, no markdown fence:
 
 {
   "verdict":    "ok" | "minor" | "critical",
+  "summary":    "<REQUIRED one-sentence rationale, <=160 chars — what you checked and why it passed/failed>",
   "issues":     ["<concrete issue, <=140 chars>", ...],
   "suggestion": "<one short sentence on what to do differently, or null if verdict is ok>"
 }
 
-Be terse. If everything looks correct, return verdict="ok" with empty issues
-and suggestion=null. Use "critical" only when the answer would actively
-mislead the user; "minor" for refinements that wouldn't change the conclusion.
+Be terse. The `summary` is always required and is shown to the user when
+they expand the review badge — make it a concrete one-liner like
+"SQL filters on the correct csat_score column and uses dataset_today as
+'this week' anchor; aggregation matches the metric definition."
+
+If everything looks correct, return verdict="ok" with empty issues and
+suggestion=null (summary still required). Use "critical" only when the
+answer would actively mislead the user; "minor" for refinements that
+wouldn't change the conclusion.
 """
 
 
@@ -1099,8 +1106,7 @@ async def _critique_response(
                 {"role": "system", "content": CRITIQUE_SYSTEM_PROMPT},
                 {"role": "user",   "content": _critique_payload(user_question, parsed)},
             ],
-            temperature=0.0,
-            max_tokens=400,
+            temperature=0.0
         )
         raw = _strip_fence((completion.choices[0].message.content or "").strip())
         critique = json.loads(raw)
@@ -1108,6 +1114,7 @@ async def _critique_response(
             return None
         critique.setdefault("issues",     [])
         critique.setdefault("suggestion", None)
+        critique.setdefault("summary",    None)
         critique["model"] = config.AZURE_DEPLOYMENT_MINI
         return critique
     except Exception as exc:  # noqa: BLE001
