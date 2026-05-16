@@ -26,7 +26,7 @@ logger = logging.getLogger("uniai.datasource")
 UPLOAD_DIR: Path = config.DATA_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-MAX_UPLOAD_BYTES: int = 50 * 1024 * 1024  # 50 MB
+MAX_UPLOAD_BYTES: int = 100 * 1024 * 1024  # 100 MB
 
 _REGISTRY: dict[str, dict[str, Any]] = {
     "default": {
@@ -43,25 +43,51 @@ _REGISTRY: dict[str, dict[str, Any]] = {
 
 
 # ---------------------------------------------------------------------------
-# Registry CRUD
+# Registry CRUD — every non-default datasource carries an owner_email field
+# so that one user can never list, query, or delete another user's data.
 # ---------------------------------------------------------------------------
 
-def list_all() -> list[dict[str, Any]]:
-    return list(_REGISTRY.values())
+def list_all(owner_email: str | None = None) -> list[dict[str, Any]]:
+    """
+    Return the default datasource plus any custom datasources owned by
+    `owner_email`. With owner_email=None, returns only the default — useful
+    for unauthenticated callers (kept for backwards compatibility).
+    """
+    return [
+        ds for ds in _REGISTRY.values()
+        if ds.get("is_default") or (owner_email and ds.get("owner_email") == owner_email)
+    ]
 
 
-def get(ds_id: str) -> dict[str, Any] | None:
-    return _REGISTRY.get(ds_id)
+def get(ds_id: str, owner_email: str | None = None) -> dict[str, Any] | None:
+    """
+    Return the datasource if it exists AND the caller is allowed to read it.
+    Default datasource is always accessible; custom ones require an
+    owner_email that matches.
+    """
+    ds = _REGISTRY.get(ds_id)
+    if ds is None:
+        return None
+    if ds.get("is_default"):
+        return ds
+    if owner_email is None or ds.get("owner_email") != owner_email:
+        return None
+    return ds
 
 
-def remove(ds_id: str) -> bool:
+def remove(ds_id: str, owner_email: str | None = None) -> bool:
     if ds_id == "default":
         return False
-    ds = _REGISTRY.pop(ds_id, None)
-    if ds:
-        Path(ds["db_path"]).unlink(missing_ok=True)
-        logger.info("Removed datasource '%s' (%s)", ds["name"], ds_id[:8])
-    return ds is not None
+    ds = _REGISTRY.get(ds_id)
+    if ds is None:
+        return False
+    if owner_email is None or ds.get("owner_email") != owner_email:
+        return False
+    _REGISTRY.pop(ds_id, None)
+    Path(ds["db_path"]).unlink(missing_ok=True)
+    logger.info("Removed datasource '%s' (%s) for %s",
+                ds["name"], ds_id[:8], owner_email)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -69,9 +95,10 @@ def remove(ds_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def ingest_file(
-    file_bytes: bytes,
+    file_bytes:  bytes,
     filename:    str,
     display_name: str = "",
+    owner_email: str | None = None,
 ) -> dict[str, Any]:
     """
     Load a flat file into a fresh DuckDB.
@@ -125,12 +152,13 @@ def ingest_file(
         "db_path":     str(db_path),
         "tables":      tables,
         "is_default":  False,
+        "owner_email": owner_email,
         "description": f"{row_count:,} rows · {col_count} columns from {filename}",
     }
     _REGISTRY[ds_id] = ds
     logger.info(
-        "Ingested %s '%s' → table '%s' (%d rows, ds=%s)",
-        suffix, filename, table_name, row_count, ds_id[:8],
+        "Ingested %s '%s' → table '%s' (%d rows, ds=%s, owner=%s)",
+        suffix, filename, table_name, row_count, ds_id[:8], owner_email,
     )
     return ds
 
@@ -147,6 +175,7 @@ def connect_postgres(
     password:     str,
     tables:       list[str],
     display_name: str = "",
+    owner_email:  str | None = None,
 ) -> dict[str, Any]:
     """
     Snapshot the requested PostgreSQL tables into a local DuckDB file.
@@ -196,6 +225,7 @@ def connect_postgres(
         "db_path":     str(db_path),
         "tables":      imported,
         "is_default":  False,
+        "owner_email": owner_email,
         "description": (
             f"Snapshot of {len(imported)} table(s) from "
             f"{database}@{host}:{port} ({total_rows:,} total rows)"
@@ -207,7 +237,8 @@ def connect_postgres(
     }
     _REGISTRY[ds_id] = ds
     logger.info(
-        "Snapshotted postgres %s → %d tables (ds=%s)", database, len(imported), ds_id[:8]
+        "Snapshotted postgres %s → %d tables (ds=%s, owner=%s)",
+        database, len(imported), ds_id[:8], owner_email,
     )
     return ds
 
@@ -220,6 +251,7 @@ def connect_sqlite(
     file_bytes:   bytes,
     filename:     str,
     display_name: str = "",
+    owner_email:  str | None = None,
 ) -> dict[str, Any]:
     """
     Snapshot all user tables from a SQLite file into a local DuckDB.
@@ -268,11 +300,13 @@ def connect_sqlite(
         "db_path":     str(db_path),
         "tables":      imported,
         "is_default":  False,
+        "owner_email": owner_email,
         "description": f"Snapshot of {len(imported)} table(s) from {filename}",
     }
     _REGISTRY[ds_id] = ds
     logger.info(
-        "Snapshotted sqlite %s → %d tables (ds=%s)", filename, len(imported), ds_id[:8]
+        "Snapshotted sqlite %s → %d tables (ds=%s, owner=%s)",
+        filename, len(imported), ds_id[:8], owner_email,
     )
     return ds
 

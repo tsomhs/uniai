@@ -42,12 +42,12 @@ import secrets
 import sys
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from fastapi import Cookie, FastAPI, HTTPException, Response
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from openai import AzureOpenAI
 
 from fastapi import File, Form, UploadFile
@@ -391,6 +391,11 @@ TOOL_SCHEMAS_GENERIC: list[dict[str, Any]] = [
 MAX_SESSIONS = 500
 SESSIONS: dict[str, list[dict[str, Any]]] = {}
 
+# Binds each session_id to the authenticated user that owns it. This prevents
+# a user from reading another user's conversation history by guessing or
+# replaying their session_id.
+SESSION_OWNER: dict[str, str] = {}
+
 # Tracks which datasource each session was last run against so that a
 # mid-conversation source switch triggers an automatic context reset.
 SESSION_DATASOURCE: dict[str, str] = {}
@@ -403,6 +408,30 @@ def _evict_sessions() -> None:
         for key in list(SESSIONS)[:overflow]:
             SESSIONS.pop(key, None)
             SESSION_DATASOURCE.pop(key, None)
+            SESSION_OWNER.pop(key, None)
+
+
+def _claim_session(session_id: str | None, user_email: str) -> str:
+    """
+    Resolve the session_id the caller should use:
+      - None or unknown → mint a new one and claim it for this user.
+      - Known and owned by user → return as-is.
+      - Known and owned by a DIFFERENT user → reject with 403.
+    """
+    if not session_id:
+        sid = uuid.uuid4().hex
+        SESSION_OWNER[sid] = user_email
+        return sid
+    owner = SESSION_OWNER.get(session_id)
+    if owner is None:
+        SESSION_OWNER[session_id] = user_email
+        return session_id
+    if owner != user_email:
+        raise HTTPException(
+            status_code=403,
+            detail="This session belongs to another user.",
+        )
+    return session_id
 
 
 # ---------------------------------------------------------------------------
@@ -490,6 +519,18 @@ def auth_logout(response: Response, session: Optional[str] = Cookie(None)):
         _TOKENS.pop(session, None)
     response.delete_cookie("session", path="/")
     return {"message": "Logged out"}
+
+
+# ---------------------------------------------------------------------------
+# Auth dependency — every protected endpoint reads the session cookie via
+# Depends(current_user) and gets the authenticated user's email, or 401.
+# ---------------------------------------------------------------------------
+
+def current_user(session: Optional[str] = Cookie(None)) -> str:
+    email = _TOKENS.get(session or "")
+    if not email or email not in _USERS:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return email
 
 
 # ---------------------------------------------------------------------------
@@ -619,6 +660,153 @@ def _strip_fence(text: str) -> str:
     return t.strip()
 
 
+# ---------------------------------------------------------------------------
+# Component validation — the LLM is told what shape each component type
+# must have, but it occasionally drifts. Validating each component against
+# a typed Pydantic model lets us drop malformed ones BEFORE they reach the
+# frontend (where a scatter without x/y, or a candlestick without OHLC,
+# would silently break the chart). Invalid components are reported back in
+# `_validation_warnings` so the user can see what was filtered.
+# ---------------------------------------------------------------------------
+
+class _NameValueRow(BaseModel):
+    name: str
+    value: float
+
+
+class _XYRow(BaseModel):
+    name: Optional[str] = None
+    x: float
+    y: float
+
+
+class _HeatmapRow(BaseModel):
+    x: str
+    y: str
+    value: float
+
+
+class _OHLCRow(BaseModel):
+    name: str
+    open:  float
+    high:  float
+    low:   float
+    close: float
+
+
+class _ComponentBase(BaseModel):
+    model_config = {"extra": "allow"}
+    title: str = ""
+    subtitle: Optional[str] = None
+
+
+class _KpiComp(_ComponentBase):
+    type: Literal["kpi"]
+    data: list[_NameValueRow] = Field(min_length=1)
+
+
+class _BarComp(_ComponentBase):
+    type: Literal["bar"]
+    data: list[_NameValueRow] = Field(min_length=1)
+
+
+class _PieComp(_ComponentBase):
+    type: Literal["pie"]
+    data: list[_NameValueRow] = Field(min_length=1)
+
+
+class _LineComp(_ComponentBase):
+    type: Literal["line"]
+    data: list[_NameValueRow] = Field(min_length=1)
+
+
+class _AreaComp(_ComponentBase):
+    type: Literal["area"]
+    data: list[_NameValueRow] = Field(min_length=1)
+
+
+class _TableComp(_ComponentBase):
+    type: Literal["table"]
+    data: list[dict[str, Any]] = Field(min_length=1)
+
+
+class _ScatterComp(_ComponentBase):
+    type: Literal["scatter"]
+    data: list[_XYRow] = Field(min_length=1)
+
+
+class _HeatmapComp(_ComponentBase):
+    type: Literal["heatmap"]
+    data: list[_HeatmapRow] = Field(min_length=1)
+
+
+class _RadarComp(_ComponentBase):
+    type: Literal["radar"]
+    data: list[_NameValueRow] = Field(min_length=1)
+
+
+class _CandlestickComp(_ComponentBase):
+    type: Literal["candlestick"]
+    data: list[_OHLCRow] = Field(min_length=1)
+
+
+_COMPONENT_MODELS: dict[str, type[BaseModel]] = {
+    "kpi":         _KpiComp,
+    "bar":         _BarComp,
+    "pie":         _PieComp,
+    "line":        _LineComp,
+    "area":        _AreaComp,
+    "table":       _TableComp,
+    "scatter":     _ScatterComp,
+    "heatmap":     _HeatmapComp,
+    "radar":       _RadarComp,
+    "candlestick": _CandlestickComp,
+}
+
+
+def _validate_components(parsed: dict[str, Any]) -> dict[str, Any]:
+    """
+    Drop components whose `data` doesn't match the documented shape for
+    their `type`. Surviving components pass through unchanged (extra fields
+    like `explanation`, `sql`, `format` are preserved).
+
+    Warnings about dropped components are attached to `_validation_warnings`
+    so they can be logged and (optionally) shown to the user.
+    """
+    raw_components = parsed.get("components") or []
+    valid:    list[dict[str, Any]] = []
+    warnings: list[str]            = []
+
+    for i, comp in enumerate(raw_components, start=1):
+        if not isinstance(comp, dict):
+            warnings.append(f"Component #{i}: not an object.")
+            continue
+
+        ctype = comp.get("type")
+        model = _COMPONENT_MODELS.get(ctype)
+        if model is None:
+            warnings.append(f"Component #{i}: unknown type '{ctype}'.")
+            continue
+
+        try:
+            model.model_validate(comp)
+        except ValidationError as exc:
+            first = exc.errors()[0] if exc.errors() else {}
+            loc   = ".".join(str(x) for x in first.get("loc", ()))
+            msg   = first.get("msg", "validation failed")
+            warnings.append(f"Component #{i} ({ctype}): {loc} — {msg}")
+            continue
+
+        valid.append(comp)
+
+    parsed["components"] = valid
+    if warnings:
+        parsed["_validation_warnings"] = warnings
+        logger.warning("Dropped %d malformed component(s): %s",
+                       len(warnings), "; ".join(warnings))
+    return parsed
+
+
 def _ensure_legacy_fields(parsed: dict[str, Any]) -> dict[str, Any]:
     """Backfill chartType/chartData from components[0] for frontend compatibility."""
     components = parsed.get("components") or []
@@ -719,15 +907,28 @@ def _build_prompt_messages(
     return messages
 
 
-async def _run_chat_stream(message: str, session_id: str, datasource_id: str = "default"):
+async def _run_chat_stream(
+    message:       str,
+    session_id:    str,
+    datasource_id: str = "default",
+    user_email:    str | None = None,
+):
     """
     Async generator — yields ("progress", {message}) for each reasoning step
     and finally ("result", {full response dict}).
 
     Selects the system prompt and tool schema based on whether the active
     datasource is the default voicebot dataset or a custom user datasource.
+
+    Datasource access is scoped to `user_email`: only the default dataset
+    or datasources owned by this user are reachable.
     """
-    ds = ds_registry.get(datasource_id) or ds_registry.get("default")
+    ds = ds_registry.get(datasource_id, owner_email=user_email)
+    if ds is None:
+        # Either the id is unknown or it belongs to another user — in both
+        # cases we silently fall back to the public default so the user
+        # gets a sensible answer instead of an internal error.
+        ds = ds_registry.get("default")
     is_default = ds.get("is_default", False)
 
     system_prompt = SYSTEM_PROMPT if is_default else SYSTEM_PROMPT_GENERIC
@@ -797,6 +998,7 @@ async def _run_chat_stream(message: str, session_id: str, datasource_id: str = "
                         "reply": msg.content or "(empty response)",
                         "components": [],
                     }
+                parsed = _validate_components(parsed)
                 parsed = _ensure_legacy_fields(parsed)
 
                 history.append({"role": "user", "content": message})
@@ -840,10 +1042,15 @@ async def _run_chat_stream(message: str, session_id: str, datasource_id: str = "
 
 
 async def _run_chat(
-    message: str, session_id: str, datasource_id: str = "default"
+    message:       str,
+    session_id:    str,
+    datasource_id: str = "default",
+    user_email:    str | None = None,
 ) -> dict[str, Any]:
     """Non-streaming wrapper — collects the final result from _run_chat_stream."""
-    async for event_type, payload in _run_chat_stream(message, session_id, datasource_id):
+    async for event_type, payload in _run_chat_stream(
+        message, session_id, datasource_id, user_email=user_email,
+    ):
         if event_type == "result":
             return payload
     return {
@@ -870,22 +1077,25 @@ async def health() -> dict[str, Any]:
 
 
 @app.post("/api/chat/stream", tags=["chat"])
-async def chat_stream(request: ChatRequest) -> StreamingResponse:
+async def chat_stream(
+    request: ChatRequest,
+    user:    str = Depends(current_user),
+) -> StreamingResponse:
     """
     SSE endpoint — streams progress events then the final dashboard result.
     Clients should prefer this over /api/chat for real-time feedback.
     """
-    session_id    = request.session_id or uuid.uuid4().hex
+    session_id    = _claim_session(request.session_id, user)
     datasource_id = request.datasource_id or "default"
     logger.info(
-        "[%s] stream request ds=%s: %.80s",
-        session_id[:8], datasource_id, request.message,
+        "[%s] stream request user=%s ds=%s: %.80s",
+        session_id[:8], user, datasource_id, request.message,
     )
 
     async def event_generator():
         try:
             async for event_type, payload in _run_chat_stream(
-                request.message, session_id, datasource_id
+                request.message, session_id, datasource_id, user_email=user,
             ):
                 if event_type == "result":
                     payload["session_id"] = session_id
@@ -905,13 +1115,21 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
 
 
 @app.post("/api/chat", tags=["chat"])
-async def chat_endpoint(request: ChatRequest) -> dict[str, Any]:
+async def chat_endpoint(
+    request: ChatRequest,
+    user:    str = Depends(current_user),
+) -> dict[str, Any]:
     """Non-streaming JSON endpoint (backwards compatibility)."""
-    session_id    = request.session_id or uuid.uuid4().hex
+    session_id    = _claim_session(request.session_id, user)
     datasource_id = request.datasource_id or "default"
-    logger.info("[%s] chat request ds=%s: %.80s", session_id[:8], datasource_id, request.message)
+    logger.info(
+        "[%s] chat request user=%s ds=%s: %.80s",
+        session_id[:8], user, datasource_id, request.message,
+    )
     try:
-        result = await _run_chat(request.message, session_id, datasource_id)
+        result = await _run_chat(
+            request.message, session_id, datasource_id, user_email=user,
+        )
     except Exception as exc:
         logger.exception("[%s] chat error", session_id[:8])
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -924,25 +1142,30 @@ async def chat_endpoint(request: ChatRequest) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 @app.get("/api/datasource", tags=["datasource"])
-async def list_datasources() -> list[dict[str, Any]]:
-    """List all registered datasources (default + any user-added ones)."""
-    return ds_registry.list_all()
+async def list_datasources(
+    user: str = Depends(current_user),
+) -> list[dict[str, Any]]:
+    """List the default datasource plus any custom ones owned by this user."""
+    return ds_registry.list_all(owner_email=user)
 
 
 @app.post("/api/datasource/upload", tags=["datasource"])
 async def upload_datasource(
     file:         UploadFile = File(...),
     display_name: str        = Form(default=""),
+    user:         str        = Depends(current_user),
 ) -> dict[str, Any]:
     """
     Upload a CSV, JSON, or JSONL file and register it as a queryable datasource.
     The file is imported into an isolated DuckDB file; the upload is discarded.
-    Max 50 MB.
+    Max 100 MB.
     """
     file_bytes = await file.read()
     try:
         ds = await asyncio.to_thread(
-            ds_registry.ingest_file, file_bytes, file.filename or "upload", display_name
+            ds_registry.ingest_file,
+            file_bytes, file.filename or "upload", display_name,
+            user,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -953,7 +1176,10 @@ async def upload_datasource(
 
 
 @app.post("/api/datasource/connect/postgres", tags=["datasource"])
-async def connect_postgres(request: PostgresConnectRequest) -> dict[str, Any]:
+async def connect_postgres(
+    request: PostgresConnectRequest,
+    user:    str = Depends(current_user),
+) -> dict[str, Any]:
     """
     Snapshot selected PostgreSQL tables into a local DuckDB datasource.
     Requires the duckdb postgres extension (auto-downloaded on first use).
@@ -964,6 +1190,7 @@ async def connect_postgres(request: PostgresConnectRequest) -> dict[str, Any]:
             request.host, request.port, request.database,
             request.user, request.password,
             request.tables, request.display_name,
+            user,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -977,6 +1204,7 @@ async def connect_postgres(request: PostgresConnectRequest) -> dict[str, Any]:
 async def connect_sqlite(
     file:         UploadFile = File(...),
     display_name: str        = Form(default=""),
+    user:         str        = Depends(current_user),
 ) -> dict[str, Any]:
     """
     Upload a SQLite (.db / .sqlite) file and snapshot all its tables into DuckDB.
@@ -987,6 +1215,7 @@ async def connect_sqlite(
         ds = await asyncio.to_thread(
             ds_registry.connect_sqlite, file_bytes,
             file.filename or "database.db", display_name,
+            user,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -997,22 +1226,34 @@ async def connect_sqlite(
 
 
 @app.delete("/api/datasource/{ds_id}", tags=["datasource"])
-async def delete_datasource(ds_id: str) -> dict[str, Any]:
-    """Remove a custom datasource and delete its local DuckDB file."""
+async def delete_datasource(
+    ds_id: str,
+    user:  str = Depends(current_user),
+) -> dict[str, Any]:
+    """Remove a custom datasource (owned by this user) and delete its file."""
     if ds_id == "default":
         raise HTTPException(status_code=400, detail="Cannot remove the default datasource.")
-    removed = ds_registry.remove(ds_id)
+    removed = ds_registry.remove(ds_id, owner_email=user)
     if not removed:
+        # 404 (not 403) so we don't leak the existence of someone else's datasource.
         raise HTTPException(status_code=404, detail=f"Datasource '{ds_id}' not found.")
     return {"ok": True}
 
 
 @app.post("/api/session/reset", tags=["chat"])
-async def reset_session(session_id: str) -> dict[str, Any]:
-    """Clear conversation history and datasource tracking for a given session."""
+async def reset_session(
+    session_id: str,
+    user:       str = Depends(current_user),
+) -> dict[str, Any]:
+    """Clear conversation history for a given session (must be owned by user)."""
+    owner = SESSION_OWNER.get(session_id)
+    if owner and owner != user:
+        # Don't leak whether the session exists — pretend it didn't.
+        return {"ok": True}
     SESSIONS.pop(session_id, None)
     SESSION_DATASOURCE.pop(session_id, None)
-    logger.info("[%s] session reset", session_id[:8])
+    SESSION_OWNER.pop(session_id, None)
+    logger.info("[%s] session reset by %s", session_id[:8], user)
     return {"ok": True}
 
 

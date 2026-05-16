@@ -6,3 +6,4 @@ openai>=1.40
 duckdb>=1.0
 mcp[cli]>=1.0
 pandas>=2.0
+sqlglot>=20.0

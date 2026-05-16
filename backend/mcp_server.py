@@ -14,11 +14,15 @@ Transport: stdio (spawned by main.py per chat request).
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
+import re
 from pathlib import Path
 
 import duckdb
+import sqlglot
+from sqlglot import expressions as exp
 from mcp.server.fastmcp import FastMCP
 
 from config import DB_PATH as _DEFAULT_DB_PATH, MAX_SQL_ROWS, METRICS_MD, SCHEMA_MD
@@ -31,16 +35,118 @@ mcp = FastMCP("UniAI Data Server")
 con = duckdb.connect(str(_active_db), read_only=True)
 
 
-def _safe_select(query: str) -> bool:
-    """Return True only for read-only SELECT/WITH statements."""
-    q = query.strip().rstrip(";").lstrip()
-    upper = q.upper()
-    if not (upper.startswith("SELECT") or upper.startswith("WITH")):
-        return False
-    banned = (" INSERT ", " UPDATE ", " DELETE ", " DROP ", " ALTER ",
-              " CREATE ", " ATTACH ", " COPY ", " PRAGMA ", " EXPORT ")
-    padded = f" {upper} "
-    return not any(b in padded for b in banned)
+# ---------------------------------------------------------------------------
+# SQL safety — parse the query into an AST and reject anything that isn't
+# a single, pure SELECT/WITH (no DDL, DML, ATTACH, PRAGMA, COPY, etc.).
+# Substring-keyword checks are fragile; an AST walk is the only defensible
+# way to know what a query actually does.
+# ---------------------------------------------------------------------------
+
+# Any one of these inside the parse tree → reject the whole query.
+# exp.Command catches statements sqlglot doesn't recognise as SELECT
+# (PRAGMA, ATTACH, COPY, EXPORT, INSTALL, LOAD, SET, …).
+_FORBIDDEN_NODES = (
+    exp.Insert, exp.Update, exp.Delete,
+    exp.Create, exp.Drop, exp.Alter,
+    exp.Command,
+)
+
+
+def _safe_select(query: str) -> tuple[bool, str]:
+    """
+    Validate that `query` is a single read-only SELECT or WITH-then-SELECT.
+
+    Returns (allowed, reason). `reason` is empty when allowed; otherwise it's
+    a short human-readable explanation the LLM can use to self-correct.
+    """
+    q = query.strip().rstrip(";")
+    if not q:
+        return False, "Empty query."
+
+    try:
+        statements = sqlglot.parse(q, dialect="duckdb")
+    except sqlglot.errors.ParseError as exc:
+        return False, f"SQL parse error: {exc}"
+
+    statements = [s for s in statements if s is not None]
+    if len(statements) != 1:
+        return False, "Exactly one SQL statement is allowed per call."
+
+    root = statements[0]
+
+    # Top-level must be a SELECT (CTEs attach to Select in sqlglot) or a
+    # set operation like UNION. Anything else (PRAGMA, ATTACH, …) is a
+    # Command node and gets rejected by the walk below anyway, but we
+    # short-circuit here for a clearer error message.
+    if not isinstance(root, (exp.Select, exp.Union)):
+        return False, (
+            f"Only SELECT/WITH queries are allowed "
+            f"(got {type(root).__name__.upper()})."
+        )
+
+    bad = next(root.find_all(*_FORBIDDEN_NODES), None)
+    if bad is not None:
+        return False, f"Forbidden operation in query: {type(bad).__name__.upper()}."
+
+    return True, ""
+
+
+# ---------------------------------------------------------------------------
+# Error-to-suggestion — when DuckDB rejects a query because the model used
+# a column that doesn't exist, return structured hints so the next reasoning
+# step can self-correct instead of giving up.
+# ---------------------------------------------------------------------------
+
+_BAD_IDENT_PATTERNS = (
+    re.compile(r'Referenced column "?([^"\s]+)"?', re.IGNORECASE),
+    re.compile(r'column "?([^"\s]+)"? (?:does not exist|not found)', re.IGNORECASE),
+    re.compile(r'unknown column "?([^"\s]+)"?', re.IGNORECASE),
+    re.compile(r"['\"]([\w.]+)['\"] does not exist", re.IGNORECASE),
+)
+
+
+def _all_column_names() -> list[str]:
+    try:
+        rows = con.execute(
+            "SELECT DISTINCT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'main'"
+        ).fetchall()
+        return [r[0] for r in rows]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _suggest_fix(error_msg: str) -> dict:
+    """
+    Extract the offending identifier from a DuckDB error and offer
+    close matches from the live schema. The LLM consumes `suggested_columns`
+    in its next turn.
+    """
+    out: dict = {"error": error_msg}
+
+    bad_id: str | None = None
+    for pat in _BAD_IDENT_PATTERNS:
+        m = pat.search(error_msg)
+        if m:
+            bad_id = m.group(1).strip()
+            break
+    if not bad_id:
+        return out
+
+    candidates = _all_column_names()
+    if not candidates:
+        return out
+
+    matches = difflib.get_close_matches(bad_id, candidates, n=5, cutoff=0.55)
+    if matches:
+        out["bad_identifier"]    = bad_id
+        out["suggested_columns"] = matches
+        out["hint"] = (
+            f"Column '{bad_id}' does not exist. Did you mean: "
+            f"{', '.join(matches)}? Call get_table_schema to verify column names "
+            f"before retrying execute_sql."
+        )
+    return out
 
 
 @mcp.tool()
@@ -135,15 +241,20 @@ def execute_sql(query: str) -> str:
     Returns up to MAX_SQL_ROWS rows as a JSON array of objects. Shape the
     SELECT so the result is already chart-ready — name/value for categorical
     charts, x/y for time-series — so no post-processing is needed.
+
+    On failure, returns {"error": …} and, when the error is a column-not-
+    found, includes {"bad_identifier", "suggested_columns", "hint"} so the
+    model can self-correct on its next turn.
     """
-    if not _safe_select(query):
-        return json.dumps({"error": "Only read-only SELECT/WITH queries are allowed."})
+    allowed, reason = _safe_select(query)
+    if not allowed:
+        return json.dumps({"error": reason})
     try:
         rows = con.execute(query).fetchmany(MAX_SQL_ROWS)
         cols = [d[0] for d in con.description]
         return json.dumps([dict(zip(cols, r)) for r in rows], default=str)
     except Exception as exc:  # noqa: BLE001
-        return json.dumps({"error": str(exc)})
+        return json.dumps(_suggest_fix(str(exc)))
 
 
 if __name__ == "__main__":
