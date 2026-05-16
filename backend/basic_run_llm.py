@@ -1,11 +1,14 @@
 import os
 from openai import AzureOpenAI
 
+from dotenv import load_dotenv
+load_dotenv()
+
 endpoint = "https://naoum-mordj9zw-eastus2.cognitiveservices.azure.com/"
 model_name = "gpt-5.4"
 deployment = "gpt-5.4-2"
 
-subscription_key = "<your-api-key>"
+subscription_key = os.getenv("AZURE_OPENAI_KEY")
 api_version = "2024-12-01-preview"
 
 client = AzureOpenAI(
