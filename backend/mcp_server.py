@@ -15,14 +15,20 @@ Transport: stdio (spawned by main.py per chat request).
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import duckdb
 from mcp.server.fastmcp import FastMCP
 
-from config import DB_PATH, MAX_SQL_ROWS, METRICS_MD, SCHEMA_MD
+from config import DB_PATH as _DEFAULT_DB_PATH, MAX_SQL_ROWS, METRICS_MD, SCHEMA_MD
 
-mcp = FastMCP("Banking Voicebot Data Server")
-con = duckdb.connect(str(DB_PATH), read_only=True)
+# main.py passes UNIAI_DB_PATH when spawning for a custom datasource.
+# Fall back to the default conversations.duckdb when not set.
+_active_db = Path(os.environ.get("UNIAI_DB_PATH") or str(_DEFAULT_DB_PATH))
+
+mcp = FastMCP("UniAI Data Server")
+con = duckdb.connect(str(_active_db), read_only=True)
 
 
 def _safe_select(query: str) -> bool:
@@ -81,16 +87,20 @@ def get_dataset_date_range() -> str:
 
     For relative-date questions ("this week", "last 30 days"), use max_date as
     the dataset's "today" — the data is synthetic and frozen, not live.
+    Only available for the default voicebot datasource.
     """
-    row = con.execute(
-        "SELECT MIN(start_date), MAX(start_date), COUNT(*) FROM v_conversations"
-    ).fetchone()
-    return json.dumps({
-        "min_date": str(row[0]),
-        "max_date": str(row[1]),
-        "dataset_today": str(row[1]),
-        "total_conversations": int(row[2]),
-    })
+    try:
+        row = con.execute(
+            "SELECT MIN(start_date), MAX(start_date), COUNT(*) FROM v_conversations"
+        ).fetchone()
+        return json.dumps({
+            "min_date": str(row[0]),
+            "max_date": str(row[1]),
+            "dataset_today": str(row[1]),
+            "total_conversations": int(row[2]),
+        })
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps({"error": str(exc)})
 
 
 @mcp.tool()

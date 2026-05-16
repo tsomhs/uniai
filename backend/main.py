@@ -47,10 +47,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from openai import AzureOpenAI
 
+from fastapi import File, Form, UploadFile
+
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 import config
+import datasource as ds_registry
 
 config.validate()
 
@@ -272,6 +275,81 @@ Hard rules:
 - Final answer is JSON only — no ```json fence, no commentary outside the JSON.
 """
 
+# ── Generic prompt used for any non-default datasource ───────────────────────
+
+SYSTEM_PROMPT_GENERIC = """\
+You are a Data Analyst AI. You turn natural-language questions into
+DASHBOARD COMPONENTS by querying a user-provided database through MCP tools.
+You never invent data.
+
+## Reasoning loop
+
+1. Call `list_tables` to discover what tables are available in this database.
+2. Call `get_table_schema` to understand the columns and types of relevant tables.
+3. For each chart component, call `execute_sql` with a single chart-ready SELECT.
+   Push all aggregation, filtering, ordering, and limiting into SQL.
+   Never reshape data in your head.
+
+## Choosing chart types
+
+- kpi    : a single summary number (count, average, sum, rate)
+- pie    : 2–6 categories summing to a whole
+- bar    : ranked categorical data — sorted descending
+- line   : metric plotted over a continuous time axis
+- area   : cumulative or stacked trend
+- table  : tabular detail with >10 rows or many columns
+
+For open-ended questions, return MULTIPLE components (a KPI strip + 1–2 charts).
+
+## Output contract — emit ONLY this raw JSON, no prose, no markdown fence
+
+{
+  "reply": "<one or two sentences for a human reader>",
+  "suggestions": ["<follow-up question>", "<follow-up question>"],
+  "components": [
+    {
+      "type": "kpi" | "bar" | "line" | "pie" | "area" | "table",
+      "title": "<short, specific title>",
+      "subtitle": "<filter / time context> | null",
+      "data": [ ... ],
+      "format": {
+        "unit": "%" | "" | "s" | "EUR" | null,
+        "scale": 1 | 100 | null,
+        "decimals": 0 | 1 | 2,
+        "thresholds": null
+      } | null,
+      "explanation": "<one sentence: why this chart type>",
+      "sql": "<the exact SQL executed>"
+    }
+  ],
+  "chartType": "<type of first component>",
+  "chartData": [ <data array of first component> ]
+}
+
+Data shapes per type:
+  kpi   → [{"name": "<label>", "value": <number>}]
+  bar   → [{"name": "<category>", "value": <number>}, ...]  sorted desc
+  pie   → [{"name": "<category>", "value": <number>}, ...]
+  line  → [{"name": "<date or label>", "value": <number>}, ...]
+  area  → same as line
+  table → [{"<col>": <val>, ...}, ...]
+
+Always use the keys `name` and `value` for the primary series.
+
+Hard rules:
+- Read-only SELECT/WITH queries only.
+- Never invent column names — call get_table_schema first.
+- Final answer is JSON only — no ```json fence, no prose.
+"""
+
+# ── Tool schemas for custom datasources (no voicebot-specific tools) ─────────
+
+TOOL_SCHEMAS_GENERIC: list[dict[str, Any]] = [
+    TOOL_SCHEMAS[0],   # list_tables
+    TOOL_SCHEMAS[1],   # get_table_schema
+    TOOL_SCHEMAS[5],   # execute_sql
+]
+
 # ---------------------------------------------------------------------------
 # Session memory — keyed by session_id, stores trimmed message history so
 # follow-up questions have context without repeating schema tool calls.
@@ -280,6 +358,10 @@ Hard rules:
 MAX_SESSIONS = 500
 SESSIONS: dict[str, list[dict[str, Any]]] = {}
 
+# Tracks which datasource each session was last run against so that a
+# mid-conversation source switch triggers an automatic context reset.
+SESSION_DATASOURCE: dict[str, str] = {}
+
 
 def _evict_sessions() -> None:
     """FIFO eviction — keep SESSIONS under MAX_SESSIONS."""
@@ -287,6 +369,7 @@ def _evict_sessions() -> None:
     if overflow > 0:
         for key in list(SESSIONS)[:overflow]:
             SESSIONS.pop(key, None)
+            SESSION_DATASOURCE.pop(key, None)
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +407,10 @@ class ChatRequest(BaseModel):
         description="Opaque session id for conversation continuity. "
                     "If omitted a new id is generated and returned.",
     )
+    datasource_id: str | None = Field(
+        default=None,
+        description="Datasource to query. Defaults to the voicebot conversations dataset.",
+    )
 
     @field_validator("message", mode="before")
     @classmethod
@@ -331,17 +418,34 @@ class ChatRequest(BaseModel):
         return v.strip()
 
 
+class PostgresConnectRequest(BaseModel):
+    host:         str        = Field(..., description="PostgreSQL host.")
+    port:         int        = Field(default=5432)
+    database:     str        = Field(..., description="Database name.")
+    user:         str        = Field(..., description="Username.")
+    password:     str        = Field(..., description="Password.")
+    tables:       list[str]  = Field(..., description="Tables to snapshot (e.g. ['public.orders']).")
+    display_name: str        = Field(default="", description="Label shown in the UI.")
+
+
 # ---------------------------------------------------------------------------
 # MCP helpers
 # ---------------------------------------------------------------------------
 
 @asynccontextmanager
-async def _mcp_session():
-    """Spawn mcp_server.py over stdio and yield an initialised ClientSession."""
+async def _mcp_session(db_path: str | None = None):
+    """Spawn mcp_server.py over stdio and yield an initialised ClientSession.
+
+    Pass db_path to override the default conversations.duckdb — used for
+    custom datasources (uploads, postgres snapshots, sqlite snapshots).
+    """
+    env: dict[str, str] = {"PYTHONPATH": str(config.BACKEND_DIR), **os.environ}
+    if db_path:
+        env["UNIAI_DB_PATH"] = db_path
     params = StdioServerParameters(
         command=sys.executable,
         args=[str(config.BACKEND_DIR / "mcp_server.py")],
-        env={"PYTHONPATH": str(config.BACKEND_DIR), **os.environ},
+        env=env,
     )
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
@@ -427,26 +531,46 @@ def _ensure_legacy_fields(parsed: dict[str, Any]) -> dict[str, Any]:
     return parsed
 
 
-async def _run_chat_stream(message: str, session_id: str):
+async def _run_chat_stream(message: str, session_id: str, datasource_id: str = "default"):
     """
     Async generator — yields ("progress", {message}) for each reasoning step
     and finally ("result", {full response dict}).
+
+    Selects the system prompt and tool schema based on whether the active
+    datasource is the default voicebot dataset or a custom user datasource.
     """
+    ds = ds_registry.get(datasource_id) or ds_registry.get("default")
+    is_default = ds.get("is_default", False)
+
+    system_prompt = SYSTEM_PROMPT if is_default else SYSTEM_PROMPT_GENERIC
+    tool_schemas  = TOOL_SCHEMAS  if is_default else TOOL_SCHEMAS_GENERIC
+    db_path       = None          if is_default else ds["db_path"]
+
+    # Auto-reset stale schema context when the datasource changes mid-conversation.
+    previous_ds_id = SESSION_DATASOURCE.get(session_id)
+    if previous_ds_id is not None and previous_ds_id != ds["id"]:
+        logger.info(
+            "[%s] datasource switched %s → %s — resetting session context",
+            session_id[:8], previous_ds_id[:8], ds["id"][:8],
+        )
+        SESSIONS.pop(session_id, None)
+    SESSION_DATASOURCE[session_id] = ds["id"]
+
     history = list(SESSIONS.get(session_id, []))
     history.append({"role": "user", "content": message})
     messages: list[dict[str, Any]] = (
-        [{"role": "system", "content": SYSTEM_PROMPT}] + history
+        [{"role": "system", "content": system_prompt}] + history
     )
 
     yield "progress", {"message": "Analysing your question…"}
 
-    async with _mcp_session() as mcp:
+    async with _mcp_session(db_path=db_path) as mcp:
         for _ in range(config.MAX_TOOL_ITERATIONS):
             completion = await asyncio.to_thread(
                 aoai.chat.completions.create,
                 model=config.AZURE_DEPLOYMENT,
                 messages=messages,
-                tools=TOOL_SCHEMAS,
+                tools=tool_schemas,
                 tool_choice="auto",
                 max_completion_tokens=16384,
             )
@@ -523,9 +647,11 @@ async def _run_chat_stream(message: str, session_id: str):
     }
 
 
-async def _run_chat(message: str, session_id: str) -> dict[str, Any]:
+async def _run_chat(
+    message: str, session_id: str, datasource_id: str = "default"
+) -> dict[str, Any]:
     """Non-streaming wrapper — collects the final result from _run_chat_stream."""
-    async for event_type, payload in _run_chat_stream(message, session_id):
+    async for event_type, payload in _run_chat_stream(message, session_id, datasource_id):
         if event_type == "result":
             return payload
     return {
@@ -557,12 +683,18 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     SSE endpoint — streams progress events then the final dashboard result.
     Clients should prefer this over /api/chat for real-time feedback.
     """
-    session_id = request.session_id or uuid.uuid4().hex
-    logger.info("[%s] stream request: %.80s", session_id[:8], request.message)
+    session_id    = request.session_id or uuid.uuid4().hex
+    datasource_id = request.datasource_id or "default"
+    logger.info(
+        "[%s] stream request ds=%s: %.80s",
+        session_id[:8], datasource_id, request.message,
+    )
 
     async def event_generator():
         try:
-            async for event_type, payload in _run_chat_stream(request.message, session_id):
+            async for event_type, payload in _run_chat_stream(
+                request.message, session_id, datasource_id
+            ):
                 if event_type == "result":
                     payload["session_id"] = session_id
                 data = json.dumps({"type": event_type, **payload})
@@ -583,10 +715,11 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
 @app.post("/api/chat", tags=["chat"])
 async def chat_endpoint(request: ChatRequest) -> dict[str, Any]:
     """Non-streaming JSON endpoint (backwards compatibility)."""
-    session_id = request.session_id or uuid.uuid4().hex
-    logger.info("[%s] chat request: %.80s", session_id[:8], request.message)
+    session_id    = request.session_id or uuid.uuid4().hex
+    datasource_id = request.datasource_id or "default"
+    logger.info("[%s] chat request ds=%s: %.80s", session_id[:8], datasource_id, request.message)
     try:
-        result = await _run_chat(request.message, session_id)
+        result = await _run_chat(request.message, session_id, datasource_id)
     except Exception as exc:
         logger.exception("[%s] chat error", session_id[:8])
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -594,10 +727,99 @@ async def chat_endpoint(request: ChatRequest) -> dict[str, Any]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Datasource routes
+# ---------------------------------------------------------------------------
+
+@app.get("/api/datasource", tags=["datasource"])
+async def list_datasources() -> list[dict[str, Any]]:
+    """List all registered datasources (default + any user-added ones)."""
+    return ds_registry.list_all()
+
+
+@app.post("/api/datasource/upload", tags=["datasource"])
+async def upload_datasource(
+    file:         UploadFile = File(...),
+    display_name: str        = Form(default=""),
+) -> dict[str, Any]:
+    """
+    Upload a CSV, JSON, or JSONL file and register it as a queryable datasource.
+    The file is imported into an isolated DuckDB file; the upload is discarded.
+    Max 50 MB.
+    """
+    file_bytes = await file.read()
+    try:
+        ds = await asyncio.to_thread(
+            ds_registry.ingest_file, file_bytes, file.filename or "upload", display_name
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("File ingestion failed: %s", file.filename)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return ds
+
+
+@app.post("/api/datasource/connect/postgres", tags=["datasource"])
+async def connect_postgres(request: PostgresConnectRequest) -> dict[str, Any]:
+    """
+    Snapshot selected PostgreSQL tables into a local DuckDB datasource.
+    Requires the duckdb postgres extension (auto-downloaded on first use).
+    """
+    try:
+        ds = await asyncio.to_thread(
+            ds_registry.connect_postgres,
+            request.host, request.port, request.database,
+            request.user, request.password,
+            request.tables, request.display_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Postgres connect failed: %s@%s", request.database, request.host)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return ds
+
+
+@app.post("/api/datasource/connect/sqlite", tags=["datasource"])
+async def connect_sqlite(
+    file:         UploadFile = File(...),
+    display_name: str        = Form(default=""),
+) -> dict[str, Any]:
+    """
+    Upload a SQLite (.db / .sqlite) file and snapshot all its tables into DuckDB.
+    Requires the duckdb sqlite extension (auto-downloaded on first use).
+    """
+    file_bytes = await file.read()
+    try:
+        ds = await asyncio.to_thread(
+            ds_registry.connect_sqlite, file_bytes,
+            file.filename or "database.db", display_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("SQLite connect failed: %s", file.filename)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return ds
+
+
+@app.delete("/api/datasource/{ds_id}", tags=["datasource"])
+async def delete_datasource(ds_id: str) -> dict[str, Any]:
+    """Remove a custom datasource and delete its local DuckDB file."""
+    if ds_id == "default":
+        raise HTTPException(status_code=400, detail="Cannot remove the default datasource.")
+    removed = ds_registry.remove(ds_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Datasource '{ds_id}' not found.")
+    return {"ok": True}
+
+
 @app.post("/api/session/reset", tags=["chat"])
 async def reset_session(session_id: str) -> dict[str, Any]:
-    """Clear conversation history for a given session."""
+    """Clear conversation history and datasource tracking for a given session."""
     SESSIONS.pop(session_id, None)
+    SESSION_DATASOURCE.pop(session_id, None)
     logger.info("[%s] session reset", session_id[:8])
     return {"ok": True}
 
