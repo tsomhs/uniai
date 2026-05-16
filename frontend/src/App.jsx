@@ -4,7 +4,7 @@ import {
   LineChart, Line, PieChart, Pie, Cell, Legend,
   AreaChart, Area, ReferenceLine,
 } from 'recharts';
-import { Send, User, Bot, Loader2, X, BarChart2, Paperclip } from 'lucide-react';
+import { Send, User, Bot, Loader2, X, BarChart2, Paperclip, Check } from 'lucide-react';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
@@ -382,6 +382,9 @@ export default function App() {
   const [isLoading,        setIsLoading]        = useState(false);
   const [activeComponents, setActiveComponents] = useState(null);
   const [sessionId,        setSessionId]        = useState(null);
+  const [completedSteps,   setCompletedSteps]   = useState([]);
+  const [currentStep,      setCurrentStep]      = useState('');
+  const currentStepRef = useRef('');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -399,34 +402,78 @@ export default function App() {
     setActiveComponents(TEST_COMPONENTS);
   };
 
-  // ── API call ──
+  // ── API call — SSE streaming ──
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || isLoading) return;
 
     const userMessage = input;
     setInput('');
     setMessages(prev => [...prev, { role: 'user', text: userMessage, components: null }]);
     setIsLoading(true);
+    setCompletedSteps([]);
+    setCurrentStep('');
+    currentStepRef.current = '';
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const response = await fetch('http://localhost:8000/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMessage, session_id: sessionId }),
       });
-      const data = await response.json();
 
-      if (data.session_id) setSessionId(data.session_id);
+      if (!response.ok || !response.body) {
+        throw new Error(`Server error ${response.status}`);
+      }
 
-      const components = data.components?.length ? data.components : null;
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: data.reply || 'Here is the data you requested.',
-        components,
-      }]);
-      if (components) setActiveComponents(components);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (raw === '[DONE]') continue;
+
+          let event;
+          try { event = JSON.parse(raw); } catch { continue; }
+
+          if (event.type === 'progress') {
+            // Move the previous step into the completed list before showing the new one
+            if (currentStepRef.current) {
+              const done = currentStepRef.current;
+              setCompletedSteps(s => [...s, done]);
+            }
+            currentStepRef.current = event.message;
+            setCurrentStep(event.message);
+
+          } else if (event.type === 'result') {
+            if (event.session_id) setSessionId(event.session_id);
+            const components = event.components?.length ? event.components : null;
+            setMessages(prev => [...prev, {
+              role: 'assistant',
+              text: event.reply || 'Here is the data you requested.',
+              components,
+            }]);
+            if (components) setActiveComponents(components);
+
+          } else if (event.type === 'error') {
+            setMessages(prev => [...prev, {
+              role: 'assistant',
+              text: `Something went wrong: ${event.message}`,
+              components: null,
+            }]);
+          }
+        }
+      }
     } catch {
       setMessages(prev => [...prev, {
         role: 'assistant',
@@ -435,6 +482,9 @@ export default function App() {
       }]);
     } finally {
       setIsLoading(false);
+      setCompletedSteps([]);
+      setCurrentStep('');
+      currentStepRef.current = '';
     }
   };
 
@@ -524,9 +574,32 @@ export default function App() {
             ))}
 
             {isLoading && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem',
-                            color: T.textMuted, paddingLeft: '4rem' }}>
-                <Loader2 className="animate-spin" size={20} /> Analyzing data…
+              <div style={{ display: 'flex', gap: '1rem', paddingLeft: '4rem' }}>
+                {/* Bot avatar placeholder */}
+                <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: 12,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              backgroundColor: T.border, color: T.textMuted }}>
+                  <Bot size={20} />
+                </div>
+
+                {/* Step list */}
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10,
+                  borderLeft: `2px solid ${T.border2}`, paddingLeft: '1rem',
+                }}>
+                  {completedSteps.map((step, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7,
+                                          color: T.textDim, fontSize: '0.78rem' }}>
+                      <Check size={12} color={T.purple} strokeWidth={3} />
+                      <span>{step}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7,
+                                color: T.textMuted, fontSize: '0.82rem', fontWeight: 500 }}>
+                    <Loader2 size={13} className="animate-spin" />
+                    <span>{currentStep || 'Connecting…'}</span>
+                  </div>
+                </div>
               </div>
             )}
             <div ref={messagesEndRef} />

@@ -11,14 +11,22 @@ Pipeline per request
 3. Conversation memory is keyed by session_id so follow-up questions build on
    prior context without repeating schema lookups.
 
-Response contract
------------------
+Streaming
+---------
+POST /api/chat/stream emits Server-Sent Events while the model works:
+  {"type": "progress", "message": "<human-readable step>"}
+  {"type": "result",   ...full response fields..., "session_id": "..."}
+  {"type": "error",    "message": "<error text>"}
+  data: [DONE]
+
+Response contract  (non-streaming /api/chat and the "result" SSE event)
+-----------------------------------------------------------------------
   {
-    "reply":      string,          # human-readable summary
-    "components": Component[],     # rich dashboard spec (see SYSTEM_PROMPT)
-    "chartType":  string | null,   # mirrors components[0].type (legacy compat)
-    "chartData":  Row[] | null,    # mirrors components[0].data  (legacy compat)
-    "session_id": string           # echo back so the client can pin follow-ups
+    "reply":      string,
+    "components": Component[],
+    "chartType":  string | null,
+    "chartData":  Row[] | null,
+    "session_id": string
   }
 """
 
@@ -26,6 +34,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
 import sys
 import uuid
 from contextlib import asynccontextmanager
@@ -33,7 +43,8 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field, field_validator
 from openai import AzureOpenAI
 
 from mcp import ClientSession, StdioServerParameters
@@ -42,6 +53,17 @@ from mcp.client.stdio import stdio_client
 import config
 
 config.validate()
+
+# ---------------------------------------------------------------------------
+# Logging — structured, with session-id prefixes for tracing
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("uniai.main")
 
 # ---------------------------------------------------------------------------
 # Azure OpenAI client
@@ -242,7 +264,16 @@ Hard rules:
 # follow-up questions have context without repeating schema tool calls.
 # ---------------------------------------------------------------------------
 
+MAX_SESSIONS = 500
 SESSIONS: dict[str, list[dict[str, Any]]] = {}
+
+
+def _evict_sessions() -> None:
+    """FIFO eviction — keep SESSIONS under MAX_SESSIONS."""
+    overflow = len(SESSIONS) - MAX_SESSIONS + 1
+    if overflow > 0:
+        for key in list(SESSIONS)[:overflow]:
+            SESSIONS.pop(key, None)
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +288,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Restrict to specific origins in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -269,12 +300,22 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., description="Natural-language question about the data.")
+    message: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Natural-language question about the data.",
+    )
     session_id: str | None = Field(
         default=None,
         description="Opaque session id for conversation continuity. "
                     "If omitted a new id is generated and returned.",
     )
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def strip_whitespace(cls, v: str) -> str:
+        return v.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +328,7 @@ async def _mcp_session():
     params = StdioServerParameters(
         command=sys.executable,
         args=[str(config.BACKEND_DIR / "mcp_server.py")],
-        env={"PYTHONPATH": str(config.BACKEND_DIR), **__import__("os").environ},
+        env={"PYTHONPATH": str(config.BACKEND_DIR), **os.environ},
     )
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
@@ -304,7 +345,49 @@ async def _call_tool(session: ClientSession, name: str, args: dict[str, Any]) ->
 
 
 # ---------------------------------------------------------------------------
-# Core chat logic
+# Human-readable progress messages per tool call
+# ---------------------------------------------------------------------------
+
+def _tool_progress_message(tool_name: str, args: dict[str, Any]) -> str:
+    """Map an MCP tool invocation to a user-facing progress description."""
+    if tool_name == "get_metrics_dictionary":
+        return "Reading metric definitions…"
+    if tool_name == "get_dataset_date_range":
+        return "Checking available data date range…"
+    if tool_name == "get_schema_dictionary":
+        return "Reading data dictionary…"
+    if tool_name == "list_tables":
+        return "Discovering available data tables…"
+    if tool_name == "get_table_schema":
+        table = args.get("table_name", "")
+        label = {
+            "v_conversations": "call records",
+            "v_turns": "conversation turns",
+            "v_evaluations": "call evaluations",
+            "v_data_collection": "collected data fields",
+            "v_tool_calls": "bot tool calls",
+        }.get(table, (table.replace("v_", "").replace("_", " ") or "data"))
+        return f"Inspecting {label} structure…"
+    if tool_name == "execute_sql":
+        q = (args.get("query") or "").upper()
+        if any(k in q for k in ("WEEK", "MONTH", "DATE_TRUNC", "STRFTIME", "STRPTIME")):
+            return "Aggregating data over time…"
+        if "GROUP BY" in q and any(k in q for k in ("INTENT", "DETECTED_INTENT")):
+            return "Analysing intent distribution…"
+        if "GROUP BY" in q and any(k in q for k in ("REGION", "SEGMENT", "LANGUAGE", "BOT_VERSION")):
+            return "Grouping records by dimension…"
+        if "GROUP BY" in q:
+            return "Grouping and counting records…"
+        if "AVG(" in q:
+            return "Computing average metrics…"
+        if "COUNT(" in q:
+            return "Counting conversation records…"
+        return "Querying conversation records…"
+    return f"Running {tool_name.replace('_', ' ')}…"
+
+
+# ---------------------------------------------------------------------------
+# Core chat logic — async generator yielding (event_type, payload) tuples
 # ---------------------------------------------------------------------------
 
 def _strip_fence(text: str) -> str:
@@ -324,21 +407,24 @@ def _ensure_legacy_fields(parsed: dict[str, Any]) -> dict[str, Any]:
     if not parsed.get("chartType") and components:
         parsed["chartType"] = components[0].get("type")
         parsed["chartData"] = components[0].get("data")
-    if "chartType" not in parsed:
-        parsed["chartType"] = None
-        parsed["chartData"] = None
-    if "reply" not in parsed:
-        parsed["reply"] = ""
+    parsed.setdefault("chartType", None)
+    parsed.setdefault("chartData", None)
+    parsed.setdefault("reply", "")
     return parsed
 
 
-async def _run_chat(message: str, session_id: str) -> dict[str, Any]:
+async def _run_chat_stream(message: str, session_id: str):
+    """
+    Async generator — yields ("progress", {message}) for each reasoning step
+    and finally ("result", {full response dict}).
+    """
     history = list(SESSIONS.get(session_id, []))
     history.append({"role": "user", "content": message})
-
     messages: list[dict[str, Any]] = (
         [{"role": "system", "content": SYSTEM_PROMPT}] + history
     )
+
+    yield "progress", {"message": "Analysing your question…"}
 
     async with _mcp_session() as mcp:
         for _ in range(config.MAX_TOOL_ITERATIONS):
@@ -372,6 +458,8 @@ async def _run_chat(message: str, session_id: str) -> dict[str, Any]:
             messages.append(assistant_entry)
 
             if not msg.tool_calls:
+                yield "progress", {"message": "Building your dashboard…"}
+
                 raw = _strip_fence(msg.content or "")
                 try:
                     parsed = json.loads(raw)
@@ -379,24 +467,33 @@ async def _run_chat(message: str, session_id: str) -> dict[str, Any]:
                     parsed = {
                         "reply": msg.content or "(empty response)",
                         "components": [],
-                        "chartType": None,
-                        "chartData": None,
                     }
                 parsed = _ensure_legacy_fields(parsed)
 
-                # Persist only the user + final assistant turn so follow-ups
-                # have natural context without bloating history with tool calls.
-                history.append({"role": "assistant",
-                                "content": parsed.get("reply", "")})
+                history.append({
+                    "role": "assistant",
+                    "content": parsed.get("reply", ""),
+                })
+                if session_id not in SESSIONS:
+                    _evict_sessions()
                 SESSIONS[session_id] = history[-(config.MAX_SESSION_HISTORY * 2):]
-                return parsed
+
+                yield "result", parsed
+                return
 
             for tc in msg.tool_calls:
                 try:
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                print(f"  tool → {tc.function.name}({list(args.keys())})")
+
+                progress_msg = _tool_progress_message(tc.function.name, args)
+                logger.info(
+                    "[%s] tool → %s  args=%s",
+                    session_id[:8], tc.function.name, list(args.keys()),
+                )
+                yield "progress", {"message": progress_msg}
+
                 output = await _call_tool(mcp, tc.function.name, args)
                 messages.append({
                     "role": "tool",
@@ -404,8 +501,21 @@ async def _run_chat(message: str, session_id: str) -> dict[str, Any]:
                     "content": output,
                 })
 
-    return {
+    yield "result", {
         "reply": "The model did not converge within the allowed tool-call budget.",
+        "components": [],
+        "chartType": None,
+        "chartData": None,
+    }
+
+
+async def _run_chat(message: str, session_id: str) -> dict[str, Any]:
+    """Non-streaming wrapper — collects the final result from _run_chat_stream."""
+    async for event_type, payload in _run_chat_stream(message, session_id):
+        if event_type == "result":
+            return payload
+    return {
+        "reply": "No result produced.",
         "components": [],
         "chartType": None,
         "chartData": None,
@@ -423,17 +533,48 @@ async def health() -> dict[str, Any]:
         "ok": True,
         "deployment": config.AZURE_DEPLOYMENT,
         "db": str(config.DB_PATH),
+        "active_sessions": len(SESSIONS),
     }
+
+
+@app.post("/api/chat/stream", tags=["chat"])
+async def chat_stream(request: ChatRequest) -> StreamingResponse:
+    """
+    SSE endpoint — streams progress events then the final dashboard result.
+    Clients should prefer this over /api/chat for real-time feedback.
+    """
+    session_id = request.session_id or uuid.uuid4().hex
+    logger.info("[%s] stream request: %.80s", session_id[:8], request.message)
+
+    async def event_generator():
+        try:
+            async for event_type, payload in _run_chat_stream(request.message, session_id):
+                if event_type == "result":
+                    payload["session_id"] = session_id
+                data = json.dumps({"type": event_type, **payload})
+                yield f"data: {data}\n\n"
+        except Exception as exc:
+            logger.exception("[%s] stream error", session_id[:8])
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/chat", tags=["chat"])
 async def chat_endpoint(request: ChatRequest) -> dict[str, Any]:
+    """Non-streaming JSON endpoint (backwards compatibility)."""
     session_id = request.session_id or uuid.uuid4().hex
+    logger.info("[%s] chat request: %.80s", session_id[:8], request.message)
     try:
         result = await _run_chat(request.message, session_id)
-    except Exception as exc:  # noqa: BLE001
-        import traceback
-        traceback.print_exc()
+    except Exception as exc:
+        logger.exception("[%s] chat error", session_id[:8])
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     result["session_id"] = session_id
     return result
@@ -443,6 +584,7 @@ async def chat_endpoint(request: ChatRequest) -> dict[str, Any]:
 async def reset_session(session_id: str) -> dict[str, Any]:
     """Clear conversation history for a given session."""
     SESSIONS.pop(session_id, None)
+    logger.info("[%s] session reset", session_id[:8])
     return {"ok": True}
 
 
