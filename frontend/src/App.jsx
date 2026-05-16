@@ -4,7 +4,7 @@ import {
   LineChart, Line, PieChart, Pie, Cell, Legend,
   AreaChart, Area, ReferenceLine,
 } from 'recharts';
-import { Send, User, Bot, Loader2, X, BarChart2, Paperclip, Check, Sparkles } from 'lucide-react';
+import { Send, User, Bot, Loader2, X, BarChart2, Paperclip, GripVertical, Menu, Plus, MessageSquare } from 'lucide-react';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
@@ -36,8 +36,6 @@ const AXIS_TICK = { fill: T.textDim, fontSize: 11 };
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
 
-// Single source of truth for rendering a backend value. Raw values are always
-// in their natural unit (0-1 for rates); fmt.scale converts to display units.
 function displayValue(raw, fmt) {
   if (raw == null || raw === '') return '—';
   const v = fmt?.scale ? raw * fmt.scale : raw;
@@ -57,7 +55,6 @@ function thresholdColor(raw, thresholds, fallback = T.purpleHi) {
     : raw <= good ? good_color : warn_color;
 }
 
-// snake_case → Title Case  |  ISO date → "Apr 18"
 function formatXLabel(s) {
   const str = String(s ?? '');
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
@@ -78,8 +75,6 @@ function ChartHeader({ title, subtitle }) {
     </div>
   );
 }
-
-// ─── KPI card ─────────────────────────────────────────────────────────────────
 
 function KpiCard({ component }) {
   const { title, subtitle, data, format: fmt } = component;
@@ -120,8 +115,6 @@ function KpiCard({ component }) {
   );
 }
 
-// ─── Pie ──────────────────────────────────────────────────────────────────────
-
 function PieComponent({ component }) {
   const { title, subtitle, data } = component;
   const total = data.reduce((s, d) => s + d.value, 0);
@@ -160,8 +153,6 @@ function PieComponent({ component }) {
   );
 }
 
-// ─── Bar ──────────────────────────────────────────────────────────────────────
-
 function BarComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
   const thr    = fmt?.thresholds;
@@ -197,8 +188,6 @@ function BarComponent({ component }) {
   );
 }
 
-// ─── Line ─────────────────────────────────────────────────────────────────────
-
 function LineComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
 
@@ -221,8 +210,6 @@ function LineComponent({ component }) {
     </div>
   );
 }
-
-// ─── Area ─────────────────────────────────────────────────────────────────────
 
 function AreaComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
@@ -253,8 +240,6 @@ function AreaComponent({ component }) {
     </div>
   );
 }
-
-// ─── Table ────────────────────────────────────────────────────────────────────
 
 function TableComponent({ component }) {
   const { title, subtitle, data } = component;
@@ -296,8 +281,6 @@ function TableComponent({ component }) {
   );
 }
 
-// ─── Dispatcher + grouper ─────────────────────────────────────────────────────
-
 function ChartComponent({ component }) {
   switch (component.type) {
     case 'kpi':   return <KpiCard component={component} />;
@@ -310,7 +293,6 @@ function ChartComponent({ component }) {
   }
 }
 
-// Groups consecutive KPI cards into a flex row so they sit side-by-side.
 function DashboardComponents({ components }) {
   if (!components?.length) return null;
 
@@ -341,9 +323,6 @@ function DashboardComponents({ components }) {
   );
 }
 
-// ─── App ──────────────────────────────────────────────────────────────────────
-
-// Test Mode mock — demonstrates the full dashboard contract without an API call.
 const TEST_COMPONENTS = [
   {
     type: 'kpi', title: 'Containment Rate', subtitle: 'This week',
@@ -380,113 +359,125 @@ export default function App() {
   }]);
   const [input,            setInput]            = useState('');
   const [isLoading,        setIsLoading]        = useState(false);
-  const [activeComponents, setActiveComponents] = useState(null);
   const [sessionId,        setSessionId]        = useState(null);
-  const [completedSteps,   setCompletedSteps]   = useState([]);
-  const [currentStep,      setCurrentStep]      = useState('');
-  const currentStepRef = useRef('');
+  
+  // Tracking active message index for right panel
+  const [activeIndex,      setActiveIndex]      = useState(null);
+  const activeComponents = activeIndex !== null ? messages[activeIndex]?.components : null;
+  
+  // Sidebar State & Chat History
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [chatHistory, setChatHistory] = useState([
+    { id: 1, title: 'Analysis: Region Volume' },
+    { id: 2, title: 'Trend: CSAT Scores' },
+    { id: 3, title: 'Containment Rates 2026' },
+  ]);
+  const [activeChatId, setActiveChatId] = useState(1);
+  
+  // Staging area for files
+  const [selectedFiles,    setSelectedFiles]    = useState([]);
+  
   const messagesEndRef = useRef(null);
-  const inputRef       = useRef(null);
+  const fileInputRef = useRef(null);
+  
+  // Panel resizing states
+  const [panelWidth, setPanelWidth] = useState(480);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+      const newWidth = document.body.clientWidth - e.clientX;
+      if (newWidth > 300 && newWidth < 900) {
+        setPanelWidth(newWidth);
+      }
+    };
+    const handleMouseUp = () => setIsDragging(false);
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      // Prevent text selection while dragging
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+    } else {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = 'default';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ── Test Mode ──
   const runTestMode = () => {
     const reply = 'Here is a mock dashboard. I have opened the Data Inspector on the right.';
-    setMessages(prev => [
-      ...prev,
-      { role: 'user', text: '(Test Mode) Show me a quick overview.', components: null },
-      { role: 'assistant', text: reply, components: TEST_COMPONENTS },
-    ]);
-    setActiveComponents(TEST_COMPONENTS);
+    setMessages(prev => {
+      const next = [
+        ...prev,
+        { role: 'user', text: '(Test Mode) Show me a quick overview.', components: null },
+        { role: 'assistant', text: reply, components: TEST_COMPONENTS },
+      ];
+      setActiveIndex(next.length - 1);
+      return next;
+    });
   };
 
-  // ── API call — SSE streaming ──
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() && selectedFiles.length === 0) return;
 
     const userMessage = input;
+    const filesToSend = [...selectedFiles];
+    
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', text: userMessage, components: null }]);
+    setSelectedFiles([]);
+    
+    setMessages(prev => [...prev, { role: 'user', text: userMessage, components: null, files: filesToSend }]);
     setIsLoading(true);
-    setCompletedSteps([]);
-    setCurrentStep('');
-    currentStepRef.current = '';
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage, session_id: sessionId }),
+      const formData = new FormData();
+      formData.append('message', userMessage);
+      if (sessionId) formData.append('session_id', sessionId);
+      filesToSend.forEach(file => {
+        formData.append('files', file); 
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error(`Server error ${response.status}`);
-      }
+      const response = await fetch('http://localhost:8000/api/chat', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+      if (data.session_id) setSessionId(data.session_id);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+      const components = data.components?.length ? data.components : null;
+      setMessages(prev => {
+        const next = [...prev, {
+          role: 'assistant',
+          text: data.reply || 'Here is the data you requested.',
+          components,
+        }];
+        if (components) setActiveIndex(next.length - 1);
+        return next;
+      });
 
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const raw = line.slice(6).trim();
-          if (raw === '[DONE]') continue;
-
-          let event;
-          try { event = JSON.parse(raw); } catch { continue; }
-
-          if (event.type === 'progress') {
-            // Move the previous step into the completed list before showing the new one
-            if (currentStepRef.current) {
-              const done = currentStepRef.current;
-              setCompletedSteps(s => [...s, done]);
-            }
-            currentStepRef.current = event.message;
-            setCurrentStep(event.message);
-
-          } else if (event.type === 'result') {
-            if (event.session_id) setSessionId(event.session_id);
-            const components = event.components?.length ? event.components : null;
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              text: event.reply || 'Here is the data you requested.',
-              components,
-              suggestions: event.suggestions || [],
-            }]);
-            if (components) setActiveComponents(components);
-
-          } else if (event.type === 'error') {
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              text: `Something went wrong: ${event.message}`,
-              components: null,
-            }]);
-          }
-        }
-      }
-    } catch {
+    } catch (error) {
+      console.error(error);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        text: "Couldn't reach the backend — is FastAPI running on port 8000?",
+        // User friendly error message
+        text: "Oops! We couldn't connect to the server right now. Please make sure the backend is running and try again.",
         components: null,
       }]);
     } finally {
       setIsLoading(false);
-      setCompletedSteps([]);
-      setCurrentStep('');
-      currentStepRef.current = '';
     }
   };
 
@@ -495,21 +486,76 @@ export default function App() {
                   color: T.textPri, fontFamily: 'system-ui, -apple-system, sans-serif',
                   overflow: 'hidden' }}>
 
-      {/* ── LEFT: Chat ── */}
+      {/* ── LEFT SIDEBAR (Collapsible) ── */}
+      <div style={{
+        width: isSidebarOpen ? 260 : 0,
+        flexShrink: 0,
+        backgroundColor: '#000000', // Slightly darker than T.bg to differentiate
+        borderRight: isSidebarOpen ? `1px solid ${T.border}` : 'none',
+        transition: 'width 0.3s ease',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', minWidth: 260, flex: 1 }}>
+          
+          <button style={{
+             display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: T.surface,
+             color: T.textPri, padding: '0.75rem 1rem', borderRadius: 8, border: `1px solid ${T.border2}`,
+             cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500, transition: 'all 0.2s', justifyContent: 'center'
+          }}
+            onMouseOver={e => e.currentTarget.style.borderColor = T.purpleSoft}
+            onMouseOut={e => e.currentTarget.style.borderColor = T.border2}
+          >
+            <Plus size={18} /> New Chat
+          </button>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }}>
+             <h3 style={{ fontSize: '0.75rem', color: T.textDim, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>Chat History</h3>
+             {chatHistory.map(chat => (
+                <button key={chat.id} 
+                  onClick={() => setActiveChatId(chat.id)}
+                  style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
+                  backgroundColor: activeChatId === chat.id ? T.surface : 'transparent',
+                  border: 'none', borderRadius: 8, color: activeChatId === chat.id ? T.textPri : T.textMuted,
+                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s'
+                }}>
+                  <MessageSquare size={16} />
+                  <span style={{ fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{chat.title}</span>
+                </button>
+             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── MAIN MIDDLE: Chat ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
         {/* Header */}
         <header style={{ backgroundColor: T.bg, padding: '1.5rem',
                          borderBottom: `1px solid ${T.border}`,
                          display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: T.purpleSoft,
-                       display: 'flex', alignItems: 'center' }}>
-            Speak With Your Data
-            <span style={{ fontSize: '0.65rem', color: '#bd69df', fontWeight: 400,
-                           marginLeft: '0.35rem', marginTop: '0.6rem', letterSpacing: '0.05em' }}>
-              {' '}by Prompt Masters
-            </span>
-          </h1>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+              style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              onMouseOver={e => e.currentTarget.style.color = T.textPri}
+              onMouseOut={e => e.currentTarget.style.color = T.textMuted}
+            >
+              <Menu size={24} />
+            </button>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: T.purpleSoft,
+                         display: 'flex', alignItems: 'center' }}>
+              Speak With Your Data
+              <span style={{ fontSize: '0.65rem', color: '#bd69df', fontWeight: 400,
+                             marginLeft: '0.35rem', marginTop: '0.6rem', letterSpacing: '0.05em' }}>
+                {' '}by Prompt Masters
+              </span>
+            </h1>
+          </div>
+
           <button onClick={runTestMode} style={{
             backgroundColor: T.surface, color: T.purpleSoft, padding: '0.5rem 1rem',
             borderRadius: 8, border: `1px solid ${T.border2}`, cursor: 'pointer',
@@ -545,168 +591,174 @@ export default function App() {
                   borderTopRightRadius: msg.role === 'user' ? 4 : 16,
                   borderTopLeftRadius:  msg.role === 'assistant' ? 4 : 16,
                 }}>
-                  <p style={{ margin: 0, lineHeight: 1.6, fontSize: '1rem',
-                              color: msg.role === 'user' ? T.userText : T.textPri }}>
-                    {msg.text}
-                  </p>
+                  {msg.text && (
+                    <p style={{ margin: 0, lineHeight: 1.6, fontSize: '1rem',
+                                color: msg.role === 'user' ? T.userText : T.textPri }}>
+                      {msg.text}
+                    </p>
+                  )}
 
-                  {/* "View Dashboard" button — opens the side panel */}
-                  {msg.components && (
+                  {/* Render attached files for user messages */}
+                  {msg.files && msg.files.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: msg.text ? '0.75rem' : '0' }}>
+                      {msg.files.map((file, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', backgroundColor: 'rgba(255,255,255,0.15)', padding: '0.35rem 0.6rem', borderRadius: 8, fontSize: '0.85rem', color: T.userText }}>
+                          <Paperclip size={14} />
+                          <span>{file.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* "View Dashboard" button — hides ONLY if this specific message index is active */}
+                  {msg.components && activeIndex !== idx && (
                     <button
-                      onClick={() => setActiveComponents(
-                        activeComponents === msg.components ? null : msg.components
-                      )}
+                      onClick={() => setActiveIndex(idx)}
                       style={{
                         marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
                         padding: '0.6rem 1rem', borderRadius: 8, cursor: 'pointer',
                         fontSize: '0.88rem', transition: 'all 0.2s',
-                        backgroundColor: activeComponents === msg.components ? T.purple : T.border,
-                        border: `1px solid ${activeComponents === msg.components ? T.purple : T.border2}`,
-                        color: activeComponents === msg.components ? 'white' : T.purpleSoft,
+                        backgroundColor: T.border,
+                        border: `1px solid ${T.border2}`,
+                        color: T.purpleSoft,
                       }}
-                      onMouseOver={e => { if (activeComponents !== msg.components) e.currentTarget.style.borderColor = T.purple; }}
-                      onMouseOut={e =>  { if (activeComponents !== msg.components) e.currentTarget.style.borderColor = T.border2; }}
+                      onMouseOver={e => e.currentTarget.style.borderColor = T.purple}
+                      onMouseOut={e => e.currentTarget.style.borderColor = T.border2}
                     >
                       <BarChart2 size={16} />
                       {panelLabel(msg.components)}
                     </button>
-                  )}
-
-                  {/* Suggested follow-up questions */}
-                  {msg.role === 'assistant' && msg.suggestions?.length > 0 && (
-                    <div style={{ marginTop: '1.1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5,
-                                    marginBottom: '0.5rem' }}>
-                        <Sparkles size={11} color={T.textDim} />
-                        <span style={{ fontSize: '0.68rem', fontWeight: 600, color: T.textDim,
-                                       textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                          Explore further
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {msg.suggestions.map((q, i) => (
-                          <button key={i} onClick={() => {
-                            setInput(q);
-                            inputRef.current?.focus();
-                          }} style={{
-                            textAlign: 'left', background: 'none', cursor: 'pointer',
-                            padding: '0.45rem 0.75rem', borderRadius: 8,
-                            border: `1px solid ${T.border2}`,
-                            color: T.textMuted, fontSize: '0.82rem',
-                            lineHeight: 1.4, transition: 'all 0.18s',
-                          }}
-                            onMouseOver={e => {
-                              e.currentTarget.style.borderColor = T.purple;
-                              e.currentTarget.style.color = T.purpleSoft;
-                              e.currentTarget.style.background = `${T.purple}14`;
-                            }}
-                            onMouseOut={e => {
-                              e.currentTarget.style.borderColor = T.border2;
-                              e.currentTarget.style.color = T.textMuted;
-                              e.currentTarget.style.background = 'none';
-                            }}
-                          >
-                            {q}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                   )}
                 </div>
               </div>
             ))}
 
             {isLoading && (
-              <div style={{ display: 'flex', gap: '1rem', paddingLeft: '4rem' }}>
-                {/* Bot avatar placeholder */}
-                <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: 12,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              backgroundColor: T.border, color: T.textMuted }}>
-                  <Bot size={20} />
-                </div>
-
-                {/* Step list */}
-                <div style={{
-                  display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10,
-                  borderLeft: `2px solid ${T.border2}`, paddingLeft: '1rem',
-                }}>
-                  {completedSteps.map((step, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7,
-                                          color: T.textDim, fontSize: '0.78rem' }}>
-                      <Check size={12} color={T.purple} strokeWidth={3} />
-                      <span>{step}</span>
-                    </div>
-                  ))}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7,
-                                color: T.textMuted, fontSize: '0.82rem', fontWeight: 500 }}>
-                    <Loader2 size={13} className="animate-spin" />
-                    <span>{currentStep || 'Connecting…'}</span>
-                  </div>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem',
+                            color: T.textMuted, paddingLeft: '4rem' }}>
+                <Loader2 className="animate-spin" size={20} /> Analyzing data…
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
         </div>
 
-        {/* Input */}
+        {/* Input area */}
         <div style={{ backgroundColor: T.bg, padding: '1.5rem', borderTop: `1px solid ${T.border}` }}>
-          <form onSubmit={handleSend}
-                style={{ maxWidth: 800, margin: '0 auto', display: 'flex', gap: '0.75rem' }}>
-            <button type="button" title="Upload files" style={{
-              backgroundColor: T.surface, color: T.textMuted,
-              padding: '0 1.25rem', borderRadius: 12,
-              border: `1px solid ${T.border}`, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', transition: 'all 0.2s',
-            }}
-              onMouseOver={e => { e.currentTarget.style.color = T.purpleSoft; e.currentTarget.style.borderColor = T.purple; }}
-              onMouseOut={e =>  { e.currentTarget.style.color = T.textMuted;  e.currentTarget.style.borderColor = T.border; }}
-            >
-              <Paperclip size={20} />
-            </button>
+          <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            
+            {/* File Staging Preview before sending */}
+            {selectedFiles.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {selectedFiles.map((file, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: T.surface, border: `1px solid ${T.border2}`, padding: '0.35rem 0.75rem', borderRadius: 8, fontSize: '0.85rem', color: T.textPri }}>
+                    <Paperclip size={14} color={T.textMuted} />
+                    <span>{file.name}</span>
+                    <button type="button" onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0, marginLeft: '0.25rem' }}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
-            <input
-              ref={inputRef}
-              type="text" value={input} onChange={e => setInput(e.target.value)}
-              placeholder="Ask a question about your data…"
-              disabled={isLoading}
-              style={{ flex: 1, padding: '1rem 1.25rem', borderRadius: 12,
-                       border: `1px solid ${T.border}`, backgroundColor: T.surface,
-                       color: '#f4f4f5', outline: 'none', fontSize: '1rem',
-                       transition: 'border-color 0.2s' }}
-              onFocus={e => e.target.style.borderColor = T.purple}
-              onBlur={e =>  e.target.style.borderColor = T.border}
-            />
+            <form onSubmit={handleSend} style={{ display: 'flex', gap: '0.75rem' }}>
+              <input
+                type="file"
+                multiple
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                accept=".csv,.json,.jsonl,.xlsx,.xls"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files);
+                  if (files.length > 0) {
+                    setSelectedFiles(prev => [...prev, ...files]);
+                  }
+                  e.target.value = '';
+                }}
+              />
+              
+              <button 
+                type="button" 
+                title="Upload files" 
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  backgroundColor: T.surface, color: T.textMuted,
+                  padding: '0 1.25rem', borderRadius: 12,
+                  border: `1px solid ${T.border}`, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', transition: 'all 0.2s',
+                }}
+                onMouseOver={e => { e.currentTarget.style.color = T.purpleSoft; e.currentTarget.style.borderColor = T.purple; }}
+                onMouseOut={e =>  { e.currentTarget.style.color = T.textMuted;  e.currentTarget.style.borderColor = T.border; }}
+              >
+                <Paperclip size={20} />
+              </button>
 
-            <button type="submit" disabled={isLoading || !input.trim()} style={{
-              backgroundColor: T.purple, color: 'white',
-              padding: '0 1.5rem', borderRadius: 12, border: 'none',
-              cursor: isLoading || !input.trim() ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background-color 0.2s',
-              opacity: isLoading || !input.trim() ? 0.5 : 1,
-            }}>
-              <Send size={20} />
-            </button>
-          </form>
+              <input
+                type="text" value={input} onChange={e => setInput(e.target.value)}
+                placeholder="Ask a question about your data…"
+                disabled={isLoading}
+                style={{ flex: 1, padding: '1rem 1.25rem', borderRadius: 12,
+                         border: `1px solid ${T.border}`, backgroundColor: T.surface,
+                         color: '#f4f4f5', outline: 'none', fontSize: '1rem',
+                         transition: 'border-color 0.2s' }}
+                onFocus={e => e.target.style.borderColor = T.purple}
+                onBlur={e =>  e.target.style.borderColor = T.border}
+              />
+
+              <button type="submit" disabled={isLoading || (!input.trim() && selectedFiles.length === 0)} style={{
+                backgroundColor: T.purple, color: 'white',
+                padding: '0 1.5rem', borderRadius: 12, border: 'none',
+                cursor: isLoading || (!input.trim() && selectedFiles.length === 0) ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'background-color 0.2s',
+                opacity: isLoading || (!input.trim() && selectedFiles.length === 0) ? 0.5 : 1,
+              }}>
+                <Send size={20} />
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
-      {/* ── RIGHT: Data Inspector Panel ── */}
+      {/* ── RIGHT: Data Inspector Panel (Resizable & Scrollable single block) ── */}
       {activeComponents && (
         <div style={{
-          width: 480, borderLeft: `1px solid ${T.border}`,
+          width: panelWidth,
+          borderLeft: `1px solid ${T.border}`,
           backgroundColor: T.bg, display: 'flex', flexDirection: 'column',
+          position: 'relative',
           animation: 'slideIn 0.25s ease-out',
         }}>
-          {/* Panel header */}
+          
+          {/* DRAG HANDLE */}
+          <div
+            onMouseDown={() => setIsDragging(true)}
+            style={{
+              position: 'absolute', left: -8, top: 0, bottom: 0, width: 16,
+              cursor: 'col-resize', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              backgroundColor: 'transparent', zIndex: 10,
+            }}
+          >
+            {/* Visual highlight line */}
+            <div style={{ position: 'absolute', left: 7, top: 0, bottom: 0, width: 2, backgroundColor: isDragging ? T.purple : 'transparent', transition: 'background-color 0.2s' }} />
+            
+            {/* Grip Icon */}
+            <div style={{ 
+              backgroundColor: T.surface, border: `1px solid ${T.border}`, borderRadius: 4, padding: 2, zIndex: 11, 
+              color: isDragging ? T.purpleSoft : T.textDim, opacity: isDragging ? 1 : 0.8, transition: 'all 0.2s' 
+            }}>
+              <GripVertical size={14} />
+            </div>
+          </div>
+
           <div style={{ padding: '1.5rem', borderBottom: `1px solid ${T.border}`,
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 500, color: T.textPri,
                          display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <BarChart2 size={20} color={T.purpleHi} /> Data Inspector
             </h2>
-            <button onClick={() => setActiveComponents(null)} style={{
+            <button onClick={() => setActiveIndex(null)} style={{
               background: 'none', border: 'none', color: T.textMuted,
               cursor: 'pointer', transition: 'color 0.2s', lineHeight: 0,
             }}
@@ -717,9 +769,18 @@ export default function App() {
             </button>
           </div>
 
-          {/* Panel body — scrollable dashboard */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
             <DashboardComponents components={activeComponents} />
+            
+            {/* Auto-generated Data Table below charts to show raw data array */}
+            {activeComponents.some(c => c.type !== 'table' && c.type !== 'kpi' && c.data) && (
+              <div style={{ marginTop: '3rem', borderTop: `1px solid ${T.border}`, paddingTop: '1.5rem' }}>
+                <h3 style={{ fontSize: '0.85rem', color: T.textDim, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>Raw Data Overview</h3>
+                {activeComponents.filter(c => c.type !== 'table' && c.type !== 'kpi' && c.data).map((chartObj, idx) => (
+                  <TableComponent key={idx} component={{ title: chartObj.title || 'Extracted Data', data: chartObj.data }} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
