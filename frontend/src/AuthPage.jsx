@@ -263,6 +263,7 @@ export default function AuthPage({ onLogin }) {
               lineHeight: 1.05,
               letterSpacing: '-0.055em',
               maxWidth: 540,
+              color: '#ffffff',
             }}>
               Turn your data into answers.
             </h1>
@@ -373,6 +374,7 @@ export default function AuthPage({ onLogin }) {
                 margin: 0,
                 fontSize: '1.75rem',
                 letterSpacing: '-0.035em',
+                color: '#ffffff',
               }}>
                 {isSignup ? 'Create your account' : 'Welcome back'}
               </h2>
@@ -551,6 +553,10 @@ export default function AuthPage({ onLogin }) {
                 cursor: 'pointer',
                 fontWeight: 700,
                 transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.6rem',
               }}
               onMouseOver={e => {
                 e.currentTarget.style.borderColor = T.purple;
@@ -561,7 +567,13 @@ export default function AuthPage({ onLogin }) {
                 e.currentTarget.style.color = T.textPri;
               }}
             >
-              Google
+              <svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                <path fill="#EA4335" d="M24 9.5c3.14 0 5.95 1.08 8.17 2.86l6.08-6.08C34.46 3.04 29.52 1 24 1 14.82 1 7.02 6.48 3.6 14.22l7.1 5.52C12.4 13.62 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.52 24.5c0-1.64-.15-3.22-.42-4.75H24v9h12.7c-.55 2.98-2.2 5.5-4.68 7.2l7.18 5.58C43.3 37.38 46.52 31.4 46.52 24.5z"/>
+                <path fill="#FBBC05" d="M10.7 28.26A14.57 14.57 0 0 1 9.5 24c0-1.48.25-2.92.7-4.26l-7.1-5.52A23.93 23.93 0 0 0 .5 24c0 3.86.92 7.5 2.6 10.72l7.6-6.46z"/>
+                <path fill="#34A853" d="M24 47c5.52 0 10.16-1.82 13.54-4.96l-7.18-5.58C28.56 37.9 26.38 38.5 24 38.5c-6.26 0-11.6-4.12-13.3-9.74l-7.6 6.46C6.98 42.48 14.82 47 24 47z"/>
+              </svg>
+              Continue with Google
             </button>
 
             <p style={{
