@@ -1643,9 +1643,11 @@ export default function App({ user, setUser, onLogout }) {
     setInput('');
   };
 
-  // ── Delete chat ──
+  // ─── Delete chat ──
   const handleDeleteChat = (e, id) => {
     e.stopPropagation();
+    if (chatOrder.length <= 1) return; // Prevent deleting if it's the only chat left
+
     setChats(prev => {
       const next = { ...prev };
       delete next[id];
@@ -1655,7 +1657,6 @@ export default function App({ user, setUser, onLogout }) {
     setChatOrder(prev => {
       const nextOrder = prev.filter(cId => cId !== id);
       
-      // If we are deleting the active chat, fallback to the top one, or create a new one
       if (activeChatId === id) {
         if (nextOrder.length > 0) {
           setActiveChatId(nextOrder[0]);
@@ -1766,7 +1767,7 @@ export default function App({ user, setUser, onLogout }) {
   const handleSend = (e) => { e.preventDefault(); sendMessage(input); };
 
   const activeDs = datasources.find(d => d.id === activeDsId);
-  const isGuest = user?.email === 'guest@local' || user?.name?.toLowerCase() === 'guest';
+  const isGuest = user?.email ? user.email.startsWith('guest') : false;
 
   const handleLoginSuccess = (newUser) => {
     setShowAuth(false);
@@ -1797,9 +1798,12 @@ export default function App({ user, setUser, onLogout }) {
                   <MessageSquare size={16} style={{ flexShrink: 0 }} />
                   <span style={{ fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{chat.title}</span>
                 </button>
-                <button onClick={(e) => handleDeleteChat(e, chat.id)} style={{ padding: '0.75rem', background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', flexShrink: 0 }} onMouseOver={e => e.currentTarget.style.color = '#ef4444'} onMouseOut={e => e.currentTarget.style.color = T.textMuted}>
-                  <Trash2 size={15} />
-                </button>
+                {/* Only render the delete button if there is more than 1 chat */}
+                {chatOrder.length > 1 && (
+                  <button onClick={(e) => handleDeleteChat(e, chat.id)} style={{ padding: '0.75rem', background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', flexShrink: 0 }} onMouseOver={e => e.currentTarget.style.color = '#ef4444'} onMouseOut={e => e.currentTarget.style.color = T.textMuted}>
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             ))}
           </div>

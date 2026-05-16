@@ -545,6 +545,32 @@ def auth_login(req: LoginRequest, response: Response):
     return {"name": user["name"], "email": user["email"]}
 
 
+@app.post("/api/auth/guest")
+def auth_guest(response: Response):
+    """Generates a temporary, isolated guest session."""
+    guest_id = uuid.uuid4().hex[:8]
+    email = f"guest_{guest_id}@temporary.local"
+    name = f"Guest {guest_id}"
+    salt = secrets.token_hex(16)
+    
+    # Register the temporary user
+    _USERS[email] = {
+        "name": name,
+        "email": email,
+        "password_hash": _hash_password(salt, secrets.token_hex(16)), 
+        "salt": salt,
+    }
+    
+    # Issue a session token
+    token = secrets.token_hex(32)
+    _TOKENS[token] = email
+    response.set_cookie(
+        "session", token, httponly=True, samesite="lax",
+        max_age=86400 * 7, path="/",
+    )
+    return {"name": name, "email": email}
+
+
 @app.get("/api/auth/me")
 def auth_me(session: Optional[str] = Cookie(None)):
     email = _TOKENS.get(session or "")
