@@ -400,6 +400,9 @@ SESSION_OWNER: dict[str, str] = {}
 # mid-conversation source switch triggers an automatic context reset.
 SESSION_DATASOURCE: dict[str, str] = {}
 
+# Tracks the current user level preference for a session.
+SESSION_USER_LEVEL: dict[str, str] = {}
+
 
 def _evict_sessions() -> None:
     """FIFO eviction — keep SESSIONS under MAX_SESSIONS."""
@@ -408,6 +411,7 @@ def _evict_sessions() -> None:
         for key in list(SESSIONS)[:overflow]:
             SESSIONS.pop(key, None)
             SESSION_DATASOURCE.pop(key, None)
+            SESSION_USER_LEVEL.pop(key, None)
             SESSION_OWNER.pop(key, None)
 
 
@@ -553,11 +557,23 @@ class ChatRequest(BaseModel):
         default=None,
         description="Datasource to query. Defaults to the voicebot conversations dataset.",
     )
+    user_level: Literal["simple", "expert", "auto"] | None = Field(
+        default=None,
+        description="Optional user expertise level that shapes answer style. Use 'auto' to infer from tone.",
+    )
 
     @field_validator("message", mode="before")
     @classmethod
     def strip_whitespace(cls, v: str) -> str:
         return v.strip()
+
+    @field_validator("user_level", mode="before")
+    @classmethod
+    def normalize_user_level(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip().lower()
+        return s if s in ("simple", "expert", "auto") else None
 
 
 class PostgresConnectRequest(BaseModel):
@@ -889,12 +905,57 @@ def _default_dataset_hint(message: str) -> str | None:
     return "Dataset interpretation hints:\n- " + "\n- ".join(hints)
 
 
+def _user_level_system_hint(user_level: str | None) -> str | None:
+    if not user_level:
+        return None
+    if user_level == "simple":
+        return (
+            "The user is a non-technical end user. Answer in plain, friendly language, "
+            "keep explanations short and avoid jargon. Only include a chart/component if "
+            "it clearly helps the answer."
+        )
+    if user_level == "expert":
+        return (
+            "The user is technical or expert. Prefer concise, data-focused answers, "
+            "include charts or KPI components when helpful, and expose exact field names "
+            "used in the analysis."
+        )
+    return None
+
+
+def _infer_user_level_from_message(message: str) -> str | None:
+    text = _compact_ws(message)
+    if not text:
+        return None
+
+    simple_signals = [
+        "τι είναι", "τι σημαίνει", "μπορείς να εξηγήσεις", "explain", "plain language",
+        "απλά", "σε απλά", "κατανοητά", "για αρχάριους", "για μη τεχνικούς",
+        "τι κάνει", "πως λειτουργεί", "πως δουλεύει", "πες μου απλά",
+    ]
+    expert_signals = [
+        "sql", "field", "dimension", "metric", "benchmark", "kpi", "trend",
+        "show me", "compare", "breakdown", "analysis", "detailed", "technical",
+        "precision", "exact", "which field", "how many", "variance",
+    ]
+
+    simple_matches = sum(1 for p in simple_signals if p in text)
+    expert_matches = sum(1 for p in expert_signals if p in text)
+
+    if simple_matches > expert_matches and simple_matches >= 1:
+        return "simple"
+    if expert_matches > simple_matches and expert_matches >= 1:
+        return "expert"
+    return None
+
+
 def _build_prompt_messages(
     message: str,
     history: list[dict[str, Any]],
     system_prompt: str,
     *,
     is_default: bool,
+    user_level: str | None = None,
 ) -> list[dict[str, Any]]:
     """Assemble model messages with deterministic dataset-grounding hints."""
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
@@ -902,6 +963,9 @@ def _build_prompt_messages(
         hint = _default_dataset_hint(message)
         if hint:
             messages.append({"role": "system", "content": hint})
+    level_hint = _user_level_system_hint(user_level)
+    if level_hint:
+        messages.append({"role": "system", "content": level_hint})
     messages.extend(history)
     messages.append({"role": "user", "content": message})
     return messages
@@ -912,6 +976,7 @@ async def _run_chat_stream(
     session_id:    str,
     datasource_id: str = "default",
     user_email:    str | None = None,
+    user_level:    str | None = None,
 ):
     """
     Async generator — yields ("progress", {message}) for each reasoning step
@@ -946,11 +1011,24 @@ async def _run_chat_stream(
     SESSION_DATASOURCE[session_id] = ds["id"]
 
     history = list(SESSIONS.get(session_id, []))
+    if user_level == "auto":
+        user_level = None
+    if user_level is None:
+        user_level = SESSION_USER_LEVEL.get(session_id)
+    if user_level is None:
+        inferred = _infer_user_level_from_message(message)
+        if inferred is not None:
+            user_level = inferred
+            SESSION_USER_LEVEL[session_id] = inferred
+    elif user_level in ("simple", "expert"):
+        SESSION_USER_LEVEL[session_id] = user_level
+
     messages: list[dict[str, Any]] = _build_prompt_messages(
         message,
         history,
         system_prompt,
         is_default=is_default,
+        user_level=user_level,
     )
 
     yield "progress", {"message": "Analysing your question…"}
@@ -1046,10 +1124,15 @@ async def _run_chat(
     session_id:    str,
     datasource_id: str = "default",
     user_email:    str | None = None,
+    user_level:    str | None = None,
 ) -> dict[str, Any]:
     """Non-streaming wrapper — collects the final result from _run_chat_stream."""
     async for event_type, payload in _run_chat_stream(
-        message, session_id, datasource_id, user_email=user_email,
+        message,
+        session_id,
+        datasource_id,
+        user_email=user_email,
+        user_level=user_level,
     ):
         if event_type == "result":
             return payload
@@ -1095,7 +1178,11 @@ async def chat_stream(
     async def event_generator():
         try:
             async for event_type, payload in _run_chat_stream(
-                request.message, session_id, datasource_id, user_email=user,
+                request.message,
+                session_id,
+                datasource_id,
+                user_email=user,
+                user_level=request.user_level,
             ):
                 if event_type == "result":
                     payload["session_id"] = session_id
@@ -1128,7 +1215,11 @@ async def chat_endpoint(
     )
     try:
         result = await _run_chat(
-            request.message, session_id, datasource_id, user_email=user,
+            request.message,
+            session_id,
+            datasource_id,
+            user_email=user,
+            user_level=request.user_level,
         )
     except Exception as exc:
         logger.exception("[%s] chat error", session_id[:8])
