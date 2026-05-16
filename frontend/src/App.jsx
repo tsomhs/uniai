@@ -10,12 +10,11 @@ import { Send, User, Bot, Loader2 } from 'lucide-react';
 
 const PIE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#14b8a6'];
 
-function scaleRaw(raw, fmt) {
-  return fmt?.scale ? raw * fmt.scale : raw;
-}
-
+// Apply scale + unit to a raw value from the backend (always 0-1 for rates).
+// This is the single source of truth — called directly in every recharts formatter.
 function displayValue(raw, fmt) {
-  const v = scaleRaw(raw, fmt);
+  if (raw == null || raw === '') return '—';
+  const v = fmt?.scale ? raw * fmt.scale : raw;
   const dp = fmt?.decimals ?? 1;
   const rounded = typeof v === 'number' ? v.toFixed(dp) : v;
   if (fmt?.unit === '%')   return `${rounded}%`;
@@ -24,22 +23,21 @@ function displayValue(raw, fmt) {
   return String(rounded);
 }
 
-function thresholdColor(rawUnscaled, thresholds, fallback = '#3b82f6') {
+function thresholdColor(raw, thresholds, fallback = '#3b82f6') {
   if (!thresholds) return fallback;
   const { good, direction, good_color, warn_color } = thresholds;
   return direction === 'higher_is_better'
-    ? rawUnscaled >= good ? good_color : warn_color
-    : rawUnscaled <= good ? good_color : warn_color;
+    ? raw >= good ? good_color : warn_color
+    : raw <= good ? good_color : warn_color;
 }
 
-// Recharts tick formatter — receives the scaled value, returns display string
-function tickFmt(fmt) {
-  return (v) => displayValue(v / (fmt?.scale ?? 1), fmt);
-}
-
-// Recharts tooltip formatter — undoes the scale to call displayValue correctly
-function tooltipFmt(fmt) {
-  return (v) => [displayValue(v / (fmt?.scale ?? 1), fmt), ''];
+// Format X-axis tick labels: snake_case → Title Case, ISO dates → "Apr 18"
+function formatXLabel(s) {
+  const str = String(s ?? '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return new Date(str + 'T00:00:00').toLocaleDateString('en', { month: 'short', day: 'numeric' });
+  }
+  return str.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 // ─── Chart title block ────────────────────────────────────────────────────────
@@ -89,7 +87,8 @@ function KpiCard({ component }) {
       </span>
       {thr && (
         <span style={{ fontSize: '0.65rem', color: '#9ca3af' }}>
-          Target {thr.direction === 'higher_is_better' ? '≥' : '≤'} {displayValue(thr.good, fmt)}
+          Target {thr.direction === 'higher_is_better' ? '≥' : '≤'}{' '}
+          {displayValue(thr.good, fmt)}
           {' · '}
           <span style={{ color: isGood ? thr.good_color : thr.warn_color, fontWeight: 600 }}>
             {isGood ? '✓ On track' : '⚠ Attention'}
@@ -150,34 +149,39 @@ function BarComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
   const thr    = fmt?.thresholds;
   const rotate = data.length > 7;
-
-  // Scale values once for recharts; threshold comparisons use the original raw values
-  const scaled = data.map(d => ({ ...d, _raw: d.value, value: scaleRaw(d.value, fmt) }));
+  // For % charts keep the full 0-1 domain so bars reflect true magnitude.
+  const domain = fmt?.unit === '%' ? [0, 1] : ['auto', 'auto'];
 
   return (
     <div style={{ marginTop: '1rem' }}>
       <ChartHeader title={title} subtitle={subtitle} />
       <ResponsiveContainer width="100%" height={rotate ? 350 : 285}>
         <BarChart
-          data={scaled}
+          data={data}
           margin={{ top: 12, right: 20, left: 8, bottom: rotate ? 90 : 8 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
           <XAxis
             dataKey="name"
+            tickFormatter={formatXLabel}
             tick={{ fontSize: 11, fill: '#6b7280' }}
             angle={rotate ? -42 : 0}
             textAnchor={rotate ? 'end' : 'middle'}
             interval={0}
           />
-          <YAxis tickFormatter={tickFmt(fmt)} tick={{ fontSize: 11, fill: '#6b7280' }} />
+          <YAxis
+            tickFormatter={v => displayValue(v, fmt)}
+            domain={domain}
+            tick={{ fontSize: 11, fill: '#6b7280' }}
+          />
           <Tooltip
-            formatter={tooltipFmt(fmt)}
+            labelFormatter={formatXLabel}
+            formatter={v => [displayValue(v, fmt), '']}
             contentStyle={{ borderRadius: 8, fontSize: '0.8rem' }}
           />
           {thr && (
             <ReferenceLine
-              y={scaleRaw(thr.good, fmt)}
+              y={thr.good}
               stroke={thr.good_color}
               strokeDasharray="6 3"
               label={{
@@ -189,8 +193,8 @@ function BarComponent({ component }) {
             />
           )}
           <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-            {scaled.map((row, i) => (
-              <Cell key={i} fill={thresholdColor(row._raw, thr)} />
+            {data.map((row, i) => (
+              <Cell key={i} fill={thresholdColor(row.value, thr)} />
             ))}
           </Bar>
         </BarChart>
@@ -203,18 +207,25 @@ function BarComponent({ component }) {
 
 function LineComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
-  const scaled = data.map(d => ({ ...d, value: scaleRaw(d.value, fmt) }));
 
   return (
     <div style={{ marginTop: '1rem' }}>
       <ChartHeader title={title} subtitle={subtitle} />
       <ResponsiveContainer width="100%" height={265}>
-        <LineChart data={scaled} margin={{ top: 8, right: 20, left: 8, bottom: 8 }}>
+        <LineChart data={data} margin={{ top: 8, right: 20, left: 8, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-          <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} />
-          <YAxis tickFormatter={tickFmt(fmt)} tick={{ fontSize: 11, fill: '#6b7280' }} />
+          <XAxis
+            dataKey="name"
+            tickFormatter={formatXLabel}
+            tick={{ fontSize: 11, fill: '#6b7280' }}
+          />
+          <YAxis
+            tickFormatter={v => displayValue(v, fmt)}
+            tick={{ fontSize: 11, fill: '#6b7280' }}
+          />
           <Tooltip
-            formatter={tooltipFmt(fmt)}
+            labelFormatter={formatXLabel}
+            formatter={v => [displayValue(v, fmt), '']}
             contentStyle={{ borderRadius: 8, fontSize: '0.8rem' }}
           />
           <Line type="monotone" dataKey="value"
@@ -229,13 +240,12 @@ function LineComponent({ component }) {
 
 function AreaComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
-  const scaled = data.map(d => ({ ...d, value: scaleRaw(d.value, fmt) }));
 
   return (
     <div style={{ marginTop: '1rem' }}>
       <ChartHeader title={title} subtitle={subtitle} />
       <ResponsiveContainer width="100%" height={265}>
-        <AreaChart data={scaled} margin={{ top: 8, right: 20, left: 8, bottom: 8 }}>
+        <AreaChart data={data} margin={{ top: 8, right: 20, left: 8, bottom: 8 }}>
           <defs>
             <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.28} />
@@ -243,10 +253,18 @@ function AreaComponent({ component }) {
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-          <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} />
-          <YAxis tickFormatter={tickFmt(fmt)} tick={{ fontSize: 11, fill: '#6b7280' }} />
+          <XAxis
+            dataKey="name"
+            tickFormatter={formatXLabel}
+            tick={{ fontSize: 11, fill: '#6b7280' }}
+          />
+          <YAxis
+            tickFormatter={v => displayValue(v, fmt)}
+            tick={{ fontSize: 11, fill: '#6b7280' }}
+          />
           <Tooltip
-            formatter={tooltipFmt(fmt)}
+            labelFormatter={formatXLabel}
+            formatter={v => [displayValue(v, fmt), '']}
             contentStyle={{ borderRadius: 8, fontSize: '0.8rem' }}
           />
           <Area type="monotone" dataKey="value"
