@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import AuthPage from './AuthPage.jsx';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Legend,
@@ -1505,7 +1506,9 @@ function UserMenu({ user, onLogout, T }) {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
-export default function App({ user, onLogout }) {
+export default function App({ user, setUser, onLogout }) {
+  const [showAuth, setShowAuth] = useState(false);
+
   // ── Locale ──
   const [locale, setLocale] = useState('en');
   const t = I18N[locale];
@@ -1763,6 +1766,12 @@ export default function App({ user, onLogout }) {
   const handleSend = (e) => { e.preventDefault(); sendMessage(input); };
 
   const activeDs = datasources.find(d => d.id === activeDsId);
+  const isGuest = user?.email === 'guest@local' || user?.name?.toLowerCase() === 'guest';
+
+  const handleLoginSuccess = (newUser) => {
+    setShowAuth(false);
+    if (setUser) setUser(newUser);
+  };
 
   return (
     <div style={{ display: 'flex', height: '100vh', backgroundColor: T.bg, color: T.textPri, fontFamily: 'system-ui, -apple-system, sans-serif', overflow: 'hidden' }}>
@@ -1849,9 +1858,72 @@ export default function App({ user, onLogout }) {
               <ChevronDown size={12} />
             </button>
 
-            {user && <UserMenu user={user} onLogout={onLogout} T={T} />}
+            {isGuest && (
+              <button
+                type="button"
+                onClick={() => setShowAuth(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  padding: '0.4rem 0.8rem',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  background: T.surface,
+                  border: `1px solid ${T.border2}`,
+                  color: T.textMuted,
+                  fontSize: '0.8rem',
+                  transition: 'all 0.2s',
+                  maxWidth: 220,
+                }}
+                onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }}
+                onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}
+              >
+                <User size={14} />
+                {locale === 'en' ? 'Log in / Sign up' : 'Σύνδεση / Εγγραφή'}
+              </button>
+            )}
+
+            {!isGuest && user && <UserMenu user={user} onLogout={onLogout} T={T} />}
           </div>
         </header>
+
+        {showAuth && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 300,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}>
+            <div style={{ position: 'relative', width: '100%', maxWidth: 1040, boxShadow: '0 28px 120px rgba(0,0,0,0.65)', borderRadius: 28, overflow: 'hidden' }}>
+              <button
+                type="button"
+                onClick={() => setShowAuth(false)}
+                style={{
+                  position: 'absolute',
+                  top: 18,
+                  right: 18,
+                  zIndex: 310,
+                  width: 38,
+                  height: 38,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: '#111113',
+                  color: T.textPri,
+                  fontSize: '1.1rem',
+                  cursor: 'pointer',
+                }}
+              >
+                ×
+              </button>
+              <AuthPage onLogin={handleLoginSuccess} />
+            </div>
+          </div>
+        )}
 
         {/* Active datasource banner */}
         {activeDs && !activeDs.is_default && (
