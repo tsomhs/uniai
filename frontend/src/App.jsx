@@ -1561,6 +1561,7 @@ export default function App({ user, onLogout }) {
   const [datasources,    setDatasources]    = useState([]);
   const [activeDsId,     setActiveDsId]     = useState('default');
   const [showDsModal,    setShowDsModal]    = useState(false);
+  const [userLevel,      setUserLevel]      = useState('auto');
 
   // ── Sidebar ──
   const [isSidebarOpen,  setIsSidebarOpen]  = useState(true);
@@ -1691,7 +1692,7 @@ export default function App({ user, onLogout }) {
       const response = await fetch('http://localhost:8000/api/chat/stream', { credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, session_id: curSessId, datasource_id: activeDsId }),
+        body: JSON.stringify({ message: text, session_id: curSessId, datasource_id: activeDsId, user_level: userLevel }),
       });
       if (!response.ok || !response.body) throw new Error(`Server error ${response.status}`);
 
@@ -1802,6 +1803,21 @@ export default function App({ user, onLogout }) {
             >
               <ChevronRight size={12} style={{ transform: 'rotate(90deg)' }} />
               {locale === 'en' ? 'EN' : 'ΕΛ'}
+            </button>
+
+            {/* User level selector */}
+            <button
+              onClick={() => setUserLevel(l => l === 'auto' ? 'simple' : l === 'simple' ? 'expert' : 'auto')}
+              title={userLevel === 'auto' ? 'Auto user level' : userLevel === 'simple' ? 'Simple user' : 'Expert user'}
+              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '0.4rem 0.8rem', borderRadius: 8, cursor: 'pointer', background: T.surface, border: `1px solid ${T.border2}`, color: T.textMuted, fontSize: '0.8rem', transition: 'all 0.2s', maxWidth: 200 }}
+              onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }}
+              onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}
+            >
+              <Sparkles size={13} color={userLevel === 'expert' ? T.purple : userLevel === 'simple' ? T.textDim : '#10b981'} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
+                {userLevel === 'auto' ? (locale === 'en' ? 'Auto' : 'Αυτόματο') : userLevel === 'simple' ? (locale === 'en' ? 'Simple' : 'Απλό') : (locale === 'en' ? 'Expert' : 'Ειδικό')}
+              </span>
+              <ChevronDown size={12} />
             </button>
 
             {/* Datasource selector */}
