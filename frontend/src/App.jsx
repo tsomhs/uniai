@@ -1181,7 +1181,7 @@ export default function App() {
 
                         {/* View Dashboard */}
                         {msg.components && activeIndex !== idx && (
-                          <button onClick={() => setActiveIndex(idx)} style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.88rem', transition: 'all 0.2s', backgroundColor: T.border, border: `1px solid ${T.border2}`, color: T.purpleSoft }}
+                          <button onClick={() => updateChat(activeChatId, { activeIndex: idx })} style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.88rem', transition: 'all 0.2s', backgroundColor: T.border, border: `1px solid ${T.border2}`, color: T.purpleSoft }}
                                   onMouseOver={e => e.currentTarget.style.borderColor = T.purple} onMouseOut={e => e.currentTarget.style.borderColor = T.border2}>
                             <BarChart2 size={16} /> {panelLabel(msg.components)}
                           </button>
