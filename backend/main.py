@@ -36,6 +36,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import uuid
 from contextlib import asynccontextmanager
@@ -272,6 +273,14 @@ Hard rules:
 - Never invent column names — call get_table_schema first if unsure.
 - Never hard-code lookup tables — read from the views.
 - If the user asks for a specific breakdown (by region, by intent), honour it.
+- If the user's wording is ambiguous, choose the closest dataset-backed proxy,
+  say explicitly that it is a proxy, and name the exact field/intent used.
+- Prefer canonical dataset terms over paraphrases. If multiple phrasings map to
+  the same dataset concept, answer them consistently.
+- For "struggling to use the product/app/e-banking" style questions, prefer a
+  digital self-service proxy grounded in the dataset, such as
+  `ebanking_login_issue` and `password_reset`, unless the user specifies a
+  narrower metric or dimension.
 - Final answer is JSON only — no ```json fence, no commentary outside the JSON.
 """
 
@@ -531,6 +540,93 @@ def _ensure_legacy_fields(parsed: dict[str, Any]) -> dict[str, Any]:
     return parsed
 
 
+def _compact_ws(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def _default_dataset_hint(message: str) -> str | None:
+    """Return a deterministic dataset-grounding hint for ambiguous phrasing."""
+    text = _compact_ws(message)
+    hints: list[str] = []
+
+    if any(
+        phrase in text
+        for phrase in (
+            "don't know how to use the product",
+            "dont know how to use the product",
+            "do not know how to use the product",
+            "don't know how to use the app",
+            "dont know how to use the app",
+            "do not know how to use the app",
+            "don't know how to use e-banking",
+            "dont know how to use e-banking",
+            "do not know how to use e-banking",
+            "struggle to use the product",
+            "struggling to use the product",
+            "struggle to use the app",
+            "struggling to use the app",
+            "can't use the app",
+            "cant use the app",
+            "cannot use the app",
+            "unable to use the app",
+            "can't use e-banking",
+            "cant use e-banking",
+            "cannot use e-banking",
+            "unable to use e-banking",
+        )
+    ):
+        hints.append(
+            "Interpret 'difficulty using the product/app/e-banking' as a proxy, "
+            "not a literal label. Prefer first-intent counts for "
+            "`ebanking_login_issue` and `password_reset`, and say that proxy "
+            "explicitly in the reply."
+        )
+
+    if "frustrat" in text or "angry" in text or "upset" in text:
+        hints.append(
+            "For emotional phrasing, prefer explicit dataset signals like "
+            "`complaint_detected=true` or `sentiment='negative'`, and name which "
+            "signal you used."
+        )
+
+    if ("drop" in text or "leave" in text or "quit" in text) and "call" in text:
+        hints.append(
+            "Map caller drop-off wording to dataset-backed abandonment signals "
+            "such as `termination_reason='caller_hung_up'` or `outcome='abandoned'`, "
+            "and state the chosen definition."
+        )
+
+    if "success" in text and "resolved" not in text and "contain" not in text:
+        hints.append(
+            "Do not treat generic 'success' as a free-form concept. Prefer the "
+            "canonical KPI definitions from the metrics dictionary or named fields "
+            "such as `call_successful` / `intent_resolved`."
+        )
+
+    if not hints:
+        return None
+
+    return "Dataset interpretation hints:\n- " + "\n- ".join(hints)
+
+
+def _build_prompt_messages(
+    message: str,
+    history: list[dict[str, Any]],
+    system_prompt: str,
+    *,
+    is_default: bool,
+) -> list[dict[str, Any]]:
+    """Assemble model messages with deterministic dataset-grounding hints."""
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+    if is_default:
+        hint = _default_dataset_hint(message)
+        if hint:
+            messages.append({"role": "system", "content": hint})
+    messages.extend(history)
+    messages.append({"role": "user", "content": message})
+    return messages
+
+
 async def _run_chat_stream(message: str, session_id: str, datasource_id: str = "default"):
     """
     Async generator — yields ("progress", {message}) for each reasoning step
@@ -557,9 +653,11 @@ async def _run_chat_stream(message: str, session_id: str, datasource_id: str = "
     SESSION_DATASOURCE[session_id] = ds["id"]
 
     history = list(SESSIONS.get(session_id, []))
-    history.append({"role": "user", "content": message})
-    messages: list[dict[str, Any]] = (
-        [{"role": "system", "content": system_prompt}] + history
+    messages: list[dict[str, Any]] = _build_prompt_messages(
+        message,
+        history,
+        system_prompt,
+        is_default=is_default,
     )
 
     yield "progress", {"message": "Analysing your question…"}
@@ -572,6 +670,7 @@ async def _run_chat_stream(message: str, session_id: str, datasource_id: str = "
                 messages=messages,
                 tools=tool_schemas,
                 tool_choice="auto",
+                temperature=0,
                 max_completion_tokens=16384,
             )
             choice = completion.choices[0]
@@ -608,6 +707,7 @@ async def _run_chat_stream(message: str, session_id: str, datasource_id: str = "
                     }
                 parsed = _ensure_legacy_fields(parsed)
 
+                history.append({"role": "user", "content": message})
                 history.append({
                     "role": "assistant",
                     "content": parsed.get("reply", ""),
