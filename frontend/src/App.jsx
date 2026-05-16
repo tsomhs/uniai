@@ -676,40 +676,66 @@ function panelLabel(components) {
   return `View Dashboard (${components.length} charts)`;
 }
 
+// ─── Initial realistic chat history (uses actual dataset values) ──────────────
+
+const WELCOME_CHAT_ID = 'chat-welcome';
+const WELCOME_CHAT    = { id: WELCOME_CHAT_ID, title: 'New Chat', messages: [], sessionId: null, activeIndex: null };
+
+function loadFromStorage() {
+  try {
+    const chats     = JSON.parse(localStorage.getItem('uniai_chats') ?? 'null');
+    const chatOrder = JSON.parse(localStorage.getItem('uniai_chatOrder') ?? 'null');
+    if (chats && chatOrder) return { chats, chatOrder };
+  } catch {}
+  return null;
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+
 export default function App() {
   // ── Locale ──
   const [locale, setLocale] = useState('en');
   const t = I18N[locale];
 
-  // ── Chat ──
-  const [messages,       setMessages]       = useState([]);
-  const [input,          setInput]          = useState('');
-  const [isLoading,      setIsLoading]      = useState(false);
-  const [sessionId,      setSessionId]      = useState(null);
+  // ── Chat registry — persisted in localStorage ──
+  const [chats, setChats] = useState(() => {
+    const saved = loadFromStorage();
+    return saved?.chats ?? { [WELCOME_CHAT_ID]: WELCOME_CHAT };
+  });
+  const [chatOrder, setChatOrder] = useState(() => {
+    const saved = loadFromStorage();
+    return saved?.chatOrder ?? [WELCOME_CHAT_ID];
+  });
+  const [activeChatId, setActiveChatId] = useState(() => {
+    const saved = loadFromStorage();
+    return saved?.chatOrder?.[0] ?? WELCOME_CHAT_ID;
+  });
 
-  // Panel (index-based so per-message tracking is accurate)
-  const [activeIndex,    setActiveIndex]    = useState(null);
+  // Derived from active chat
+  const chat           = chats[activeChatId] ?? { messages: [], sessionId: null, activeIndex: null };
+  const messages       = chat.messages;
+  const sessionId      = chat.sessionId;
+  const activeIndex    = chat.activeIndex;
   const activeComponents = activeIndex !== null ? messages[activeIndex]?.components : null;
 
-  // SSE progress
+  // Welcome screen: active chat has no user messages
+  const isWelcomeScreen = !messages.some(m => m.role === 'user');
+
+  // ── Input / loading (transient — not persisted per chat) ──
+  const [input,          setInput]          = useState('');
+  const [isLoading,      setIsLoading]      = useState(false);
   const [completedSteps, setCompletedSteps] = useState([]);
   const [currentStep,    setCurrentStep]    = useState('');
 
-  // Datasources
+  // ── Datasources ──
   const [datasources,    setDatasources]    = useState([]);
   const [activeDsId,     setActiveDsId]     = useState('default');
   const [showDsModal,    setShowDsModal]    = useState(false);
 
-  // Sidebar
+  // ── Sidebar ──
   const [isSidebarOpen,  setIsSidebarOpen]  = useState(true);
-  const [chatHistory,    setChatHistory]    = useState([
-    { id: 1, title: 'Analysis: Region Volume' },
-    { id: 2, title: 'Trend: CSAT Scores' },
-    { id: 3, title: 'Containment Rates 2026' },
-  ]);
-  const [activeChatId,   setActiveChatId]   = useState(1);
 
-  // Resizable panel
+  // ── Resizable panel ──
   const [panelWidth,     setPanelWidth]     = useState(480);
   const [isDragging,     setIsDragging]     = useState(false);
 
@@ -717,8 +743,9 @@ export default function App() {
   const messagesEndRef = useRef(null);
   const inputRef       = useRef(null);
 
-  // Welcome screen: shown while no messages sent yet
-  const isWelcomeScreen = messages.length === 0 || messages.every(m => m.role !== 'user');
+  // ── Helper: update a single chat by id ──
+  const updateChat = (id, patch) =>
+    setChats(prev => ({ ...prev, [id]: { ...prev[id], ...(typeof patch === 'function' ? patch(prev[id]) : patch) } }));
 
   // Panel drag-to-resize
   useEffect(() => {
@@ -747,6 +774,43 @@ export default function App() {
   };
   useEffect(() => { fetchDatasources(); }, []);
 
+  // ── Persist chat history to localStorage ──
+  useEffect(() => {
+    try {
+      localStorage.setItem('uniai_chats',     JSON.stringify(chats));
+      localStorage.setItem('uniai_chatOrder', JSON.stringify(chatOrder));
+    } catch {}
+  }, [chats, chatOrder]);
+
+  // ── New chat ──
+  const handleNewChat = () => {
+    // If the active chat is already blank (welcome screen), just stay on it
+    const cur = chats[activeChatId];
+    if (cur && !cur.messages.some(m => m.role === 'user')) {
+      setInput(''); return;
+    }
+    const id = `chat-${Date.now()}`;
+    setChats(prev => ({ ...prev, [id]: { id, title: t.newChat, messages: [], sessionId: null, activeIndex: null } }));
+    setChatOrder(prev => [id, ...prev]);
+    setActiveChatId(id);
+    setInput('');
+    setIsLoading(false);
+    setCompletedSteps([]);
+    setCurrentStep('');
+    currentStepRef.current = '';
+  };
+
+  // ── Switch chat ──
+  const handleSwitchChat = (id) => {
+    if (id === activeChatId) return;
+    setActiveChatId(id);
+    setIsLoading(false);
+    setCompletedSteps([]);
+    setCurrentStep('');
+    currentStepRef.current = '';
+    setInput('');
+  };
+
   const handleDeleteDs = async (dsId) => {
     try { await fetch(`http://localhost:8000/api/datasource/${dsId}`, { method: 'DELETE' }); if (activeDsId === dsId) setActiveDsId('default'); await fetchDatasources(); } catch { }
   };
@@ -756,24 +820,38 @@ export default function App() {
     const ds = datasources.find(d => d.id === newId);
     if (sessionId) { try { await fetch(`http://localhost:8000/api/session/reset?session_id=${sessionId}`, { method: 'POST' }); } catch { } }
     setActiveDsId(newId);
-    if (ds) setMessages(prev => [...prev, { role: 'separator', dsName: ds.name, dsType: ds.type }]);
+    if (ds) updateChat(activeChatId, c => ({ ...c, messages: [...c.messages, { role: 'separator', dsName: ds.name, dsType: ds.type }] }));
   };
 
   const runTestMode = () => {
-    const reply = 'Here is a mock dashboard. I have opened the Data Inspector on the right.';
-    setMessages(prev => {
-      const next = [...prev, { role: 'user', text: '(Test Mode) Show me a quick overview.', components: null }, { role: 'assistant', text: reply, components: TEST_COMPONENTS }];
-      setActiveIndex(next.length - 1);
-      return next;
+    const chatId = activeChatId;
+    const reply  = 'Here is a mock dashboard. I have opened the Data Inspector on the right.';
+    updateChat(chatId, c => {
+      const next = [...c.messages, { role: 'user', text: '(Test Mode) Show me a quick overview.', components: null }, { role: 'assistant', text: reply, components: TEST_COMPONENTS }];
+      return { ...c, messages: next, activeIndex: next.length - 1 };
     });
   };
 
-  // ── Core send logic (shared by form submit and welcome card clicks) ──
+  // ── Core send — shared by form submit and welcome card clicks ──
   const sendMessage = async (text) => {
     if (!text.trim() || isLoading) return;
-    const snapshotDs = datasources.find(d => d.id === activeDsId);
+
+    const chatId    = activeChatId;   // snapshot so async closures target the right chat
+    const curChat   = chats[chatId];
+    const snapDs    = datasources.find(d => d.id === activeDsId);
+    const curSessId = curChat?.sessionId ?? null;
+
+    // Auto-title from the very first user message in this chat
+    const isFirstMsg = !(curChat?.messages ?? []).some(m => m.role === 'user');
+    const autoTitle  = isFirstMsg ? (text.length > 42 ? text.slice(0, 42) + '…' : text) : null;
+
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', text, components: null }]);
+    updateChat(chatId, c => ({
+      ...c,
+      messages: [...(c.messages ?? []), { role: 'user', text, components: null }],
+      ...(autoTitle ? { title: autoTitle } : {}),
+    }));
+
     setIsLoading(true);
     setCompletedSteps([]);
     setCurrentStep('');
@@ -783,13 +861,13 @@ export default function App() {
       const response = await fetch('http://localhost:8000/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, session_id: sessionId, datasource_id: activeDsId }),
+        body: JSON.stringify({ message: text, session_id: curSessId, datasource_id: activeDsId }),
       });
       if (!response.ok || !response.body) throw new Error(`Server error ${response.status}`);
 
       const reader  = response.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = '';
+      let buffer    = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -805,24 +883,25 @@ export default function App() {
           let event; try { event = JSON.parse(raw); } catch { continue; }
 
           if (event.type === 'progress') {
-            if (currentStepRef.current) { const done = currentStepRef.current; setCompletedSteps(s => [...s, done]); }
+            if (currentStepRef.current) { const d = currentStepRef.current; setCompletedSteps(s => [...s, d]); }
             currentStepRef.current = event.message;
             setCurrentStep(event.message);
+
           } else if (event.type === 'result') {
-            if (event.session_id) setSessionId(event.session_id);
-            const components = event.components?.length ? event.components : null;
-            setMessages(prev => {
-              const next = [...prev, { role: 'assistant', text: event.reply || 'Here is the data you requested.', components, suggestions: event.suggestions || [], dsName: snapshotDs?.name, dsType: snapshotDs?.type }];
-              if (components) setActiveIndex(next.length - 1);
-              return next;
+            const components   = event.components?.length ? event.components : null;
+            const assistantMsg = { role: 'assistant', text: event.reply || 'Here is the data you requested.', components, suggestions: event.suggestions || [], dsName: snapDs?.name, dsType: snapDs?.type };
+            updateChat(chatId, c => {
+              const next = [...(c.messages ?? []), assistantMsg];
+              return { ...c, messages: next, sessionId: event.session_id ?? c.sessionId, activeIndex: components ? next.length - 1 : c.activeIndex };
             });
+
           } else if (event.type === 'error') {
-            setMessages(prev => [...prev, { role: 'assistant', text: `Something went wrong: ${event.message}`, components: null }]);
+            updateChat(chatId, c => ({ ...c, messages: [...(c.messages ?? []), { role: 'assistant', text: `Something went wrong: ${event.message}`, components: null }] }));
           }
         }
       }
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', text: "Oops! We couldn't reach the server. Please make sure the backend is running and try again.", components: null }]);
+      updateChat(chatId, c => ({ ...c, messages: [...(c.messages ?? []), { role: 'assistant', text: "Oops! We couldn't reach the server. Please make sure the backend is running and try again.", components: null }] }));
     } finally {
       setIsLoading(false); setCompletedSteps([]); setCurrentStep(''); currentStepRef.current = '';
     }
@@ -842,15 +921,17 @@ export default function App() {
       {/* ── LEFT SIDEBAR ── */}
       <div style={{ width: isSidebarOpen ? 260 : 0, flexShrink: 0, backgroundColor: '#000000', borderRight: isSidebarOpen ? `1px solid ${T.border}` : 'none', transition: 'width 0.3s ease', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', minWidth: 260, flex: 1 }}>
-          <button style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: T.surface, color: T.textPri, padding: '0.75rem 1rem', borderRadius: 8, border: `1px solid ${T.border2}`, cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500, transition: 'all 0.2s', justifyContent: 'center' }}
+          <button onClick={handleNewChat}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: T.surface, color: T.textPri, padding: '0.75rem 1rem', borderRadius: 8, border: `1px solid ${T.border2}`, cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500, transition: 'all 0.2s', justifyContent: 'center' }}
                   onMouseOver={e => e.currentTarget.style.borderColor = T.purpleSoft} onMouseOut={e => e.currentTarget.style.borderColor = T.border2}>
             <Plus size={18} /> {t.newChat}
           </button>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }}>
             <h3 style={{ fontSize: '0.75rem', color: T.textDim, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>{t.chatHistory}</h3>
-            {chatHistory.map(chat => (
-              <button key={chat.id} onClick={() => setActiveChatId(chat.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', backgroundColor: activeChatId === chat.id ? T.surface : 'transparent', border: 'none', borderRadius: 8, color: activeChatId === chat.id ? T.textPri : T.textMuted, cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
-                <MessageSquare size={16} />
+            {chatOrder.map(id => chats[id]).filter(Boolean).map(chat => (
+              <button key={chat.id} onClick={() => handleSwitchChat(chat.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', backgroundColor: activeChatId === chat.id ? T.surface : 'transparent', border: 'none', borderRadius: 8, color: activeChatId === chat.id ? T.textPri : T.textMuted, cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', width: '100%' }}>
+                <MessageSquare size={16} style={{ flexShrink: 0 }} />
                 <span style={{ fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{chat.title}</span>
               </button>
             ))}
