@@ -1389,23 +1389,6 @@ function WelcomeScreen({ t, onSend, user }) {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
-const TEST_COMPONENTS = [
-  {
-    type: 'kpi', title: 'Containment Rate', subtitle: 'This week',
-    data: [{ name: 'Containment Rate', value: 0.762 }],
-    format: { unit: '%', scale: 100, decimals: 1, thresholds: { good: 0.85, direction: 'higher_is_better', good_color: '#7C3AED', warn_color: '#F59E0B' } },
-  },
-  {
-    type: 'bar', title: 'Calls by Region', subtitle: 'All conversations',
-    data: [
-      { name: 'attica', value: 5007 }, { name: 'thessaloniki', value: 2156 },
-      { name: 'crete', value: 1204 }, { name: 'patras', value: 876 },
-      { name: 'larissa', value: 543 }, { name: 'other_gr', value: 214 },
-    ],
-    format: { unit: '', scale: 1, decimals: 0, thresholds: null },
-  },
-];
-
 function panelLabel(components) {
   if (!components?.length) return '';
   if (components.length === 1) { const t = components[0].type; return `View ${t.charAt(0).toUpperCase() + t.slice(1)} Chart`; }
@@ -1564,7 +1547,7 @@ export default function App({ user, onLogout }) {
   const [userLevel,      setUserLevel]      = useState('auto');
 
   // ── Sidebar ──
-  const [isSidebarOpen,  setIsSidebarOpen]  = useState(true);
+  const [isSidebarOpen,  setIsSidebarOpen]  = useState(false);
 
   // ── Resizable panel ──
   const [panelWidth,     setPanelWidth]     = useState(480);
@@ -1573,6 +1556,10 @@ export default function App({ user, onLogout }) {
   const currentStepRef = useRef('');
   const messagesEndRef = useRef(null);
   const inputRef       = useRef(null);
+
+  // ── Scroll Sync ──
+  const scrollContainerRef = useRef(null);
+  const isScrolledToBottomRef = useRef(true);
 
   // ── Helper: update a single chat by id ──
   const updateChat = (id, patch) =>
@@ -1598,7 +1585,18 @@ export default function App({ user, onLogout }) {
     return () => { document.removeEventListener('mousemove', handleMouseMove); document.removeEventListener('mouseup', handleMouseUp); };
   }, [isDragging]);
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  // Scroll sync logic: Track if user scrolled away from the bottom
+  const handleScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    isScrolledToBottomRef.current = scrollHeight - scrollTop - clientHeight < 60;
+  };
+
+  // Auto-scroll when new messages or loading steps stream in
+  useEffect(() => {
+    if (isScrolledToBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, completedSteps, currentStep]);
 
   const fetchDatasources = async () => {
     try { const res = await fetch('http://localhost:8000/api/datasource', { credentials: 'include' }); if (res.ok) setDatasources(await res.json()); } catch { }
@@ -1642,6 +1640,36 @@ export default function App({ user, onLogout }) {
     setInput('');
   };
 
+  // ── Delete chat ──
+  const handleDeleteChat = (e, id) => {
+    e.stopPropagation();
+    setChats(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+
+    setChatOrder(prev => {
+      const nextOrder = prev.filter(cId => cId !== id);
+      
+      // If we are deleting the active chat, fallback to the top one, or create a new one
+      if (activeChatId === id) {
+        if (nextOrder.length > 0) {
+          setActiveChatId(nextOrder[0]);
+        } else {
+          const newId = `chat-${Date.now()}`;
+          setChats(curr => ({
+            ...curr,
+            [newId]: { id: newId, title: t.newChat, messages: [], sessionId: null, activeIndex: null }
+          }));
+          setActiveChatId(newId);
+          return [newId];
+        }
+      }
+      return nextOrder;
+    });
+  };
+
   const handleDeleteDs = async (dsId) => {
     try { await fetch(`http://localhost:8000/api/datasource/${dsId}`, { method: 'DELETE', credentials: 'include' }); if (activeDsId === dsId) setActiveDsId('default'); await fetchDatasources(); } catch { }
   };
@@ -1652,15 +1680,6 @@ export default function App({ user, onLogout }) {
     if (sessionId) { try { await fetch(`http://localhost:8000/api/session/reset?session_id=${sessionId}`, { method: 'POST', credentials: 'include' }); } catch { } }
     setActiveDsId(newId);
     if (ds) updateChat(activeChatId, c => ({ ...c, messages: [...c.messages, { role: 'separator', dsName: ds.name, dsType: ds.type }] }));
-  };
-
-  const runTestMode = () => {
-    const chatId = activeChatId;
-    const reply  = 'Here is a mock dashboard. I have opened the Data Inspector on the right.';
-    updateChat(chatId, c => {
-      const next = [...c.messages, { role: 'user', text: '(Test Mode) Show me a quick overview.', components: null }, { role: 'assistant', text: reply, components: TEST_COMPONENTS }];
-      return { ...c, messages: next, activeIndex: next.length - 1 };
-    });
   };
 
   // ── Core send — shared by form submit and welcome card clicks ──
@@ -1677,6 +1696,9 @@ export default function App({ user, onLogout }) {
     const autoTitle  = isFirstMsg ? (text.length > 42 ? text.slice(0, 42) + '…' : text) : null;
 
     setInput('');
+    // Force auto-scroll explicitly when a user sends a new message
+    isScrolledToBottomRef.current = true;
+    
     updateChat(chatId, c => ({
       ...c,
       messages: [...(c.messages ?? []), { role: 'user', text, components: null }],
@@ -1760,11 +1782,16 @@ export default function App({ user, onLogout }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }}>
             <h3 style={{ fontSize: '0.75rem', color: T.textDim, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>{t.chatHistory}</h3>
             {chatOrder.map(id => chats[id]).filter(Boolean).map(chat => (
-              <button key={chat.id} onClick={() => handleSwitchChat(chat.id)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', backgroundColor: activeChatId === chat.id ? T.surface : 'transparent', border: 'none', borderRadius: 8, color: activeChatId === chat.id ? T.textPri : T.textMuted, cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', width: '100%' }}>
-                <MessageSquare size={16} style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{chat.title}</span>
-              </button>
+              <div key={chat.id} style={{ display: 'flex', alignItems: 'center', backgroundColor: activeChatId === chat.id ? T.surface : 'transparent', borderRadius: 8, transition: 'all 0.2s', width: '100%' }}>
+                <button onClick={() => handleSwitchChat(chat.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', border: 'none', background: 'none', color: activeChatId === chat.id ? T.textPri : T.textMuted, cursor: 'pointer', textAlign: 'left', flex: 1, minWidth: 0 }}>
+                  <MessageSquare size={16} style={{ flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{chat.title}</span>
+                </button>
+                <button onClick={(e) => handleDeleteChat(e, chat.id)} style={{ padding: '0.75rem', background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', flexShrink: 0 }} onMouseOver={e => e.currentTarget.style.color = '#ef4444'} onMouseOut={e => e.currentTarget.style.color = T.textMuted}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
             ))}
           </div>
         </div>
@@ -1775,18 +1802,20 @@ export default function App({ user, onLogout }) {
 
         {/* Header */}
         <header style={{ backgroundColor: T.bg, padding: '1.25rem 1.5rem', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flexShrink: 1 }}>
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0 }}
                     onMouseOver={e => e.currentTarget.style.color = T.textPri} onMouseOut={e => e.currentTarget.style.color = T.textMuted}>
               <Menu size={24} />
             </button>
-            <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, color: T.purpleSoft, display: 'flex', alignItems: 'center' }}>
+            <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, color: T.purpleSoft, display: 'flex', alignItems: 'baseline', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {t.appTitle}
-              <span style={{ fontSize: '0.62rem', color: '#bd69df', fontWeight: 400, marginLeft: '0.35rem', marginTop: '0.55rem', letterSpacing: '0.05em' }}>{' '}{t.appSubtitle}</span>
+              <span style={{ fontSize: '0.62rem', color: '#bd69df', fontWeight: 400, marginLeft: '0.4rem', letterSpacing: '0.05em' }}>
+                {t.appSubtitle}
+              </span>
             </h1>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {/* Language toggle */}
             <button
               onClick={() => setLocale(l => l === 'en' ? 'el' : 'en')}
@@ -1820,30 +1849,6 @@ export default function App({ user, onLogout }) {
               <ChevronDown size={12} />
             </button>
 
-            {/* Datasource selector */}
-            {datasources.length > 0 && (() => {
-              const active = datasources.find(d => d.id === activeDsId) ?? datasources[0];
-              return (
-                <button onClick={() => setShowDsModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '0.4rem 0.8rem', borderRadius: 8, cursor: 'pointer', background: T.surface, border: `1px solid ${T.border2}`, color: T.textMuted, fontSize: '0.8rem', transition: 'all 0.2s', maxWidth: 200 }}
-                        onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }} onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}>
-                  <Database size={13} color={DS_TYPE_COLOR[active.type] ?? T.textDim} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>{active.name}</span>
-                  <ChevronDown size={12} />
-                </button>
-              );
-            })()}
-
-            {/* Add datasource */}
-            <button onClick={() => setShowDsModal(true)} title={t.addSource} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.4rem', borderRadius: 8, cursor: 'pointer', background: T.surface, border: `1px solid ${T.border2}`, color: T.textMuted, transition: 'all 0.2s' }}
-                    onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }} onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}>
-              <Plus size={16} />
-            </button>
-
-            <button onClick={runTestMode} style={{ backgroundColor: T.surface, color: T.purpleSoft, padding: '0.45rem 1rem', borderRadius: 8, border: `1px solid ${T.border2}`, cursor: 'pointer', fontSize: '0.88rem', fontWeight: 500, transition: 'all 0.2s' }}
-                    onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.backgroundColor = T.border; }} onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.backgroundColor = T.surface; }}>
-              {t.testMode}
-            </button>
-
             {user && <UserMenu user={user} onLogout={onLogout} T={T} />}
           </div>
         </header>
@@ -1858,7 +1863,11 @@ export default function App({ user, onLogout }) {
         )}
 
         {/* Messages area — welcome screen or conversation */}
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div 
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}
+        >
           {isWelcomeScreen ? (
             <WelcomeScreen t={t} onSend={sendMessage} user={user} />
           ) : (
