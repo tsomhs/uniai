@@ -7,7 +7,7 @@ import {
 import {
   Send, User, Bot, Loader2, X, BarChart2, Paperclip, Check, Sparkles,
   Database, Upload, Plus, Trash2, ChevronDown, Link,
-  GripVertical, Menu, MessageSquare,
+  GripVertical, Menu, MessageSquare, ChevronRight,
 } from 'lucide-react';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -37,6 +37,119 @@ const TOOLTIP_STYLE = {
   boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
 };
 const AXIS_TICK = { fill: T.textDim, fontSize: 11 };
+
+// ─── i18n ─────────────────────────────────────────────────────────────────────
+
+const I18N = {
+  en: {
+    appTitle:        'Speak With Your Data',
+    appSubtitle:     'by Prompt Masters',
+    testMode:        'Test Mode',
+    newChat:         'New Chat',
+    chatHistory:     'Chat History',
+    placeholder:     'Ask a question about your data…',
+    exploreFurther:  'Explore further',
+    dataInspector:   'Data Inspector',
+    rawData:         'Raw Data Overview',
+    switchBtn:       'Switch',
+    querying:        'Querying',
+    nowQuerying:     'Now querying',
+    connecting:      'Connecting…',
+    addSource:       'Add data source',
+    active:          'ACTIVE',
+    noCustomSources: 'No custom sources yet. Upload a file or connect a database using the tabs above.',
+    greeting: (h) => h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening',
+    welcomeSub:      'What would you like to explore today?',
+    suggestions: [
+      'What is the overall containment rate?',
+      'Show me the top 5 customer intents',
+      'Compare CSAT scores by customer segment',
+      'Which bot version has better performance?',
+      'Show the weekly call volume trend',
+    ],
+    modal: {
+      title:        'Data Sources',
+      mySources:    'My Sources',
+      uploadFile:   'Upload File',
+      postgres:     'PostgreSQL',
+      sqlite:       'SQLite',
+      uploadDesc:   'Upload a CSV, JSON, or JSONL file. It will be imported into an isolated DuckDB table. Max 50 MB.',
+      clickFile:    'Click to choose a file',
+      fileTypes:    '.csv · .json · .jsonl',
+      importing:    'Importing data…',
+      pgDesc:       'Selected tables will be snapshotted into a local DuckDB file at connect time. Requires network access to your PostgreSQL host.',
+      pgFields:     [
+        ['Display name', 'display_name', 'text',     'My Sales DB'],
+        ['Host',         'host',         'text',     'localhost'],
+        ['Port',         'port',         'text',     '5432'],
+        ['Database',     'database',     'text',     'mydb'],
+        ['Username',     'user',         'text',     'postgres'],
+        ['Password',     'password',     'password', ''],
+        ['Tables (comma-separated)', 'tables', 'text', 'public.orders, public.customers'],
+      ],
+      connectBtn:      'Connect & Snapshot',
+      connectingBtn:   'Connecting…',
+      sqliteDesc:      'Upload a .db or .sqlite file. All user tables will be snapshotted into DuckDB. Max 50 MB.',
+      clickSqlite:     'Click to choose a SQLite file',
+      sqliteTypes:     '.db · .sqlite',
+      importingDb:     'Importing database…',
+    },
+  },
+  el: {
+    appTitle:        'Μίλα με τα Δεδομένα σου',
+    appSubtitle:     'από τους Prompt Masters',
+    testMode:        'Δοκιμαστική Λειτουργία',
+    newChat:         'Νέα Συνομιλία',
+    chatHistory:     'Ιστορικό Συνομιλιών',
+    placeholder:     'Κάνε μια ερώτηση για τα δεδομένα σου…',
+    exploreFurther:  'Εξερεύνησε περαιτέρω',
+    dataInspector:   'Επιθεωρητής Δεδομένων',
+    rawData:         'Επισκόπηση Ακατέργαστων Δεδομένων',
+    switchBtn:       'Αλλαγή',
+    querying:        'Αναζήτηση σε',
+    nowQuerying:     'Τώρα αναζητούμε',
+    connecting:      'Σύνδεση…',
+    addSource:       'Προσθήκη πηγής δεδομένων',
+    active:          'ΕΝΕΡΓΗ',
+    noCustomSources: 'Δεν υπάρχουν προσαρμοσμένες πηγές. Ανεβάστε αρχείο ή συνδεθείτε σε βάση δεδομένων.',
+    greeting: (h) => h < 12 ? 'Καλημέρα' : h < 18 ? 'Καλό απόγευμα' : 'Καλό βράδυ',
+    welcomeSub:      'Τι θα ήθελες να εξερευνήσεις σήμερα;',
+    suggestions: [
+      'Ποιο είναι το συνολικό ποσοστό συγκράτησης;',
+      'Δείξε μου τα 5 πιο συχνά αιτήματα πελατών',
+      'Σύγκρινε τις βαθμολογίες CSAT ανά τμήμα πελατών',
+      'Ποια έκδοση bot έχει καλύτερη απόδοση;',
+      'Εμφάνισε την εβδομαδιαία τάση όγκου κλήσεων',
+    ],
+    modal: {
+      title:        'Πηγές Δεδομένων',
+      mySources:    'Οι Πηγές μου',
+      uploadFile:   'Μεταφόρτωση Αρχείου',
+      postgres:     'PostgreSQL',
+      sqlite:       'SQLite',
+      uploadDesc:   'Ανεβάστε αρχείο CSV, JSON ή JSONL. Θα εισαχθεί σε απομονωμένο πίνακα DuckDB. Μέγ. 50 MB.',
+      clickFile:    'Κάντε κλικ για επιλογή αρχείου',
+      fileTypes:    '.csv · .json · .jsonl',
+      importing:    'Εισαγωγή δεδομένων…',
+      pgDesc:       'Οι επιλεγμένοι πίνακες θα αποθηκευτούν τοπικά κατά τη σύνδεση. Απαιτείται πρόσβαση στον PostgreSQL host σας.',
+      pgFields:     [
+        ['Εμφανιζόμενο όνομα', 'display_name', 'text',     'Βάση Δεδομένων μου'],
+        ['Host',               'host',         'text',     'localhost'],
+        ['Port',               'port',         'text',     '5432'],
+        ['Βάση δεδομένων',     'database',     'text',     'mydb'],
+        ['Χρήστης',            'user',         'text',     'postgres'],
+        ['Κωδικός',            'password',     'password', ''],
+        ['Πίνακες (διαχωρισμένοι με κόμμα)', 'tables', 'text', 'public.orders, public.customers'],
+      ],
+      connectBtn:      'Σύνδεση & Αποθήκευση',
+      connectingBtn:   'Σύνδεση…',
+      sqliteDesc:      'Ανεβάστε αρχείο .db ή .sqlite. Όλοι οι πίνακες θα εισαχθούν σε DuckDB. Μέγ. 50 MB.',
+      clickSqlite:     'Κάντε κλικ για επιλογή αρχείου SQLite',
+      sqliteTypes:     '.db · .sqlite',
+      importingDb:     'Εισαγωγή βάσης δεδομένων…',
+    },
+  },
+};
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
 
@@ -86,27 +199,19 @@ function KpiCard({ component }) {
   const { title, subtitle, data, format: fmt } = component;
   const row = data?.[0];
   if (!row) return null;
-
   const raw    = row.value;
   const thr    = fmt?.thresholds;
   const color  = thresholdColor(raw, thr, T.purpleHi);
   const isGood = !thr || (thr.direction === 'higher_is_better' ? raw >= thr.good : raw <= thr.good);
-
   return (
     <div style={{
       flex: '1 1 150px', minWidth: 140,
-      border: `2px solid ${color}`,
-      borderRadius: 12,
-      padding: '0.9rem 1.1rem',
-      background: `${color}18`,
+      border: `2px solid ${color}`, borderRadius: 12,
+      padding: '0.9rem 1.1rem', background: `${color}18`,
       display: 'flex', flexDirection: 'column', gap: 4,
     }}>
-      <span style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.textMuted }}>
-        {title}
-      </span>
-      <span style={{ fontSize: '2rem', fontWeight: 800, color, lineHeight: 1.1 }}>
-        {displayValue(raw, fmt)}
-      </span>
+      <span style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: T.textMuted }}>{title}</span>
+      <span style={{ fontSize: '2rem', fontWeight: 800, color, lineHeight: 1.1 }}>{displayValue(raw, fmt)}</span>
       {thr && (
         <span style={{ fontSize: '0.62rem', color: T.textDim }}>
           Target {thr.direction === 'higher_is_better' ? '≥' : '≤'} {displayValue(thr.good, fmt)}
@@ -126,35 +231,23 @@ function KpiCard({ component }) {
 function PieComponent({ component }) {
   const { title, subtitle, data } = component;
   const total = data.reduce((s, d) => s + d.value, 0);
-
   const renderLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, value }) => {
     const RAD = Math.PI / 180;
-    const r   = innerRadius + (outerRadius - innerRadius) * 0.58;
-    const x   = cx + r * Math.cos(-midAngle * RAD);
-    const y   = cy + r * Math.sin(-midAngle * RAD);
-    return (
-      <text x={x} y={y} fill="white" textAnchor="middle"
-            dominantBaseline="central" fontSize={12} fontWeight={700}>
-        {((value / total) * 100).toFixed(1)}%
-      </text>
-    );
+    const r = innerRadius + (outerRadius - innerRadius) * 0.58;
+    const x = cx + r * Math.cos(-midAngle * RAD);
+    const y = cy + r * Math.sin(-midAngle * RAD);
+    return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700}>{((value / total) * 100).toFixed(1)}%</text>;
   };
-
   return (
     <div style={{ marginTop: '1rem' }}>
       <ChartHeader title={title} subtitle={subtitle} />
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>
-          <Pie data={data} dataKey="value" nameKey="name"
-               cx="50%" cy="50%" outerRadius={110}
-               labelLine={false} label={renderLabel}
-               stroke={T.bg} strokeWidth={3}>
+          <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={110} labelLine={false} label={renderLabel} stroke={T.bg} strokeWidth={3}>
             {data.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
           </Pie>
-          <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: T.purpleSoft }}
-                   formatter={v => [v.toLocaleString(), '']} />
-          <Legend iconType="circle" iconSize={10}
-                  wrapperStyle={{ fontSize: '0.78rem', color: T.textMuted, paddingTop: 8 }} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: T.purpleSoft }} formatter={v => [v.toLocaleString(), '']} />
+          <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '0.78rem', color: T.textMuted, paddingTop: 8 }} />
         </PieChart>
       </ResponsiveContainer>
     </div>
@@ -168,29 +261,18 @@ function BarComponent({ component }) {
   const thr    = fmt?.thresholds;
   const rotate = data.length > 7;
   const domain = fmt?.unit === '%' ? [0, 1] : ['auto', 'auto'];
-
   return (
     <div style={{ marginTop: '1rem' }}>
       <ChartHeader title={title} subtitle={subtitle} />
       <ResponsiveContainer width="100%" height={rotate ? 350 : 285}>
         <BarChart data={data} margin={{ top: 12, right: 20, left: 8, bottom: rotate ? 90 : 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
-          <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK}
-                 angle={rotate ? -42 : 0} textAnchor={rotate ? 'end' : 'middle'}
-                 interval={0} axisLine={false} tickLine={false} />
-          <YAxis tickFormatter={v => displayValue(v, fmt)} domain={domain}
-                 tick={AXIS_TICK} axisLine={false} tickLine={false} />
-          <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']}
-                   contentStyle={TOOLTIP_STYLE} cursor={{ fill: `${T.border}80` }} />
-          {thr && (
-            <ReferenceLine y={thr.good} stroke={thr.good_color} strokeDasharray="6 3"
-              label={{ value: `Target ${displayValue(thr.good, fmt)}`, position: 'insideTopRight',
-                       fontSize: 10, fill: thr.good_color }} />
-          )}
+          <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK} angle={rotate ? -42 : 0} textAnchor={rotate ? 'end' : 'middle'} interval={0} axisLine={false} tickLine={false} />
+          <YAxis tickFormatter={v => displayValue(v, fmt)} domain={domain} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+          <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']} contentStyle={TOOLTIP_STYLE} cursor={{ fill: `${T.border}80` }} />
+          {thr && <ReferenceLine y={thr.good} stroke={thr.good_color} strokeDasharray="6 3" label={{ value: `Target ${displayValue(thr.good, fmt)}`, position: 'insideTopRight', fontSize: 10, fill: thr.good_color }} />}
           <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-            {data.map((row, i) => (
-              <Cell key={i} fill={thresholdColor(row.value, thr)} />
-            ))}
+            {data.map((row, i) => <Cell key={i} fill={thresholdColor(row.value, thr)} />)}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -202,21 +284,16 @@ function BarComponent({ component }) {
 
 function LineComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
-
   return (
     <div style={{ marginTop: '1rem' }}>
       <ChartHeader title={title} subtitle={subtitle} />
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={data} margin={{ top: 8, right: 20, left: 8, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
-          <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK}
-                 axisLine={false} tickLine={false} />
-          <YAxis tickFormatter={v => displayValue(v, fmt)} tick={AXIS_TICK}
-                 axisLine={false} tickLine={false} />
-          <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']}
-                   contentStyle={TOOLTIP_STYLE} />
-          <Line type="monotone" dataKey="value" stroke={T.purpleHi} strokeWidth={3}
-                dot={{ r: 3, fill: T.purpleHi }} activeDot={{ r: 5, fill: T.purpleSoft }} />
+          <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+          <YAxis tickFormatter={v => displayValue(v, fmt)} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+          <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']} contentStyle={TOOLTIP_STYLE} />
+          <Line type="monotone" dataKey="value" stroke={T.purpleHi} strokeWidth={3} dot={{ r: 3, fill: T.purpleHi }} activeDot={{ r: 5, fill: T.purpleSoft }} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -227,7 +304,6 @@ function LineComponent({ component }) {
 
 function AreaComponent({ component }) {
   const { title, subtitle, data, format: fmt } = component;
-
   return (
     <div style={{ marginTop: '1rem' }}>
       <ChartHeader title={title} subtitle={subtitle} />
@@ -240,15 +316,10 @@ function AreaComponent({ component }) {
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke={T.border} vertical={false} />
-          <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK}
-                 axisLine={false} tickLine={false} />
-          <YAxis tickFormatter={v => displayValue(v, fmt)} tick={AXIS_TICK}
-                 axisLine={false} tickLine={false} />
-          <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']}
-                   contentStyle={TOOLTIP_STYLE} />
-          <Area type="monotone" dataKey="value" stroke={T.purpleHi} strokeWidth={3}
-                fill="url(#areaGrad)" dot={{ r: 3, fill: T.purpleHi }}
-                activeDot={{ r: 5, fill: T.purpleSoft }} />
+          <XAxis dataKey="name" tickFormatter={formatXLabel} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+          <YAxis tickFormatter={v => displayValue(v, fmt)} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+          <Tooltip labelFormatter={formatXLabel} formatter={v => [displayValue(v, fmt), '']} contentStyle={TOOLTIP_STYLE} />
+          <Area type="monotone" dataKey="value" stroke={T.purpleHi} strokeWidth={3} fill="url(#areaGrad)" dot={{ r: 3, fill: T.purpleHi }} activeDot={{ r: 5, fill: T.purpleSoft }} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -261,7 +332,6 @@ function TableComponent({ component }) {
   const { title, subtitle, data } = component;
   if (!data?.length) return null;
   const cols = Object.keys(data[0]);
-
   return (
     <div style={{ marginTop: '1rem', overflowX: 'auto' }}>
       <ChartHeader title={title} subtitle={subtitle} />
@@ -269,25 +339,13 @@ function TableComponent({ component }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
           <thead>
             <tr style={{ backgroundColor: T.border }}>
-              {cols.map(c => (
-                <th key={c} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600,
-                                     color: T.textMuted, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
-                  {c.replace(/_/g, ' ')}
-                </th>
-              ))}
+              {cols.map(c => <th key={c} style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: T.textMuted, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{c.replace(/_/g, ' ')}</th>)}
             </tr>
           </thead>
           <tbody>
             {data.map((row, i) => (
-              <tr key={i} style={{ background: i % 2 === 0 ? T.surface : T.bg,
-                                   borderBottom: `1px solid ${T.border}` }}>
-                {cols.map(c => (
-                  <td key={c} style={{ padding: '8px 12px', color: T.textPri }}>
-                    {typeof row[c] === 'number'
-                      ? row[c].toLocaleString(undefined, { maximumFractionDigits: 4 })
-                      : String(row[c] ?? '')}
-                  </td>
-                ))}
+              <tr key={i} style={{ background: i % 2 === 0 ? T.surface : T.bg, borderBottom: `1px solid ${T.border}` }}>
+                {cols.map(c => <td key={c} style={{ padding: '8px 12px', color: T.textPri }}>{typeof row[c] === 'number' ? row[c].toLocaleString(undefined, { maximumFractionDigits: 4 }) : String(row[c] ?? '')}</td>)}
               </tr>
             ))}
           </tbody>
@@ -313,29 +371,19 @@ function ChartComponent({ component }) {
 
 function DashboardComponents({ components }) {
   if (!components?.length) return null;
-
   const groups = [];
   let kpiRun = [];
   for (const c of components) {
-    if (c.type === 'kpi') {
-      kpiRun.push(c);
-    } else {
-      if (kpiRun.length) { groups.push({ kind: 'kpi-row', items: kpiRun }); kpiRun = []; }
-      groups.push({ kind: 'single', item: c });
-    }
+    if (c.type === 'kpi') { kpiRun.push(c); }
+    else { if (kpiRun.length) { groups.push({ kind: 'kpi-row', items: kpiRun }); kpiRun = []; } groups.push({ kind: 'single', item: c }); }
   }
   if (kpiRun.length) groups.push({ kind: 'kpi-row', items: kpiRun });
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {groups.map((g, i) =>
-        g.kind === 'kpi-row' ? (
-          <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-            {g.items.map((c, j) => <KpiCard key={j} component={c} />)}
-          </div>
-        ) : (
-          <ChartComponent key={i} component={g.item} />
-        )
+        g.kind === 'kpi-row'
+          ? <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>{g.items.map((c, j) => <KpiCard key={j} component={c} />)}</div>
+          : <ChartComponent key={i} component={g.item} />
       )}
     </div>
   );
@@ -344,46 +392,36 @@ function DashboardComponents({ components }) {
 // ─── Datasource UI ───────────────────────────────────────────────────────────
 
 const DS_TYPE_COLOR = {
-  duckdb:   '#7C3AED',
-  csv:      '#10b981',
-  json:     '#10b981',
-  jsonl:    '#10b981',
-  postgres: '#3b82f6',
-  sqlite:   '#f59e0b',
+  duckdb: '#7C3AED', csv: '#10b981', json: '#10b981', jsonl: '#10b981',
+  postgres: '#3b82f6', sqlite: '#f59e0b',
 };
 
 function DsTypeBadge({ type }) {
-  const label = { duckdb: 'DuckDB', csv: 'CSV', json: 'JSON', jsonl: 'JSONL',
-                  postgres: 'PostgreSQL', sqlite: 'SQLite' }[type] ?? type;
+  const label = { duckdb: 'DuckDB', csv: 'CSV', json: 'JSON', jsonl: 'JSONL', postgres: 'PostgreSQL', sqlite: 'SQLite' }[type] ?? type;
   return (
     <span style={{
-      fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px',
-      borderRadius: 6, background: `${DS_TYPE_COLOR[type] ?? '#71717a'}28`,
-      color: DS_TYPE_COLOR[type] ?? '#71717a',
+      fontSize: '0.62rem', fontWeight: 700, padding: '2px 7px', borderRadius: 6,
+      background: `${DS_TYPE_COLOR[type] ?? '#71717a'}28`, color: DS_TYPE_COLOR[type] ?? '#71717a',
       textTransform: 'uppercase', letterSpacing: '0.05em',
-    }}>
-      {label}
-    </span>
+    }}>{label}</span>
   );
 }
 
-function DataSourceModal({ datasources, activeDsId, onSwitch, onDelete, onClose, onRefresh }) {
-  const [tab,       setTab]       = useState('list');
-  const [busy,      setBusy]      = useState(false);
-  const [error,     setError]     = useState('');
-  const [pgForm,    setPgForm]    = useState({ host: '', port: '5432', database: '', user: '', password: '', tables: '', display_name: '' });
+function DataSourceModal({ datasources, activeDsId, onSwitch, onDelete, onClose, onRefresh, t }) {
+  const m = t.modal;
+  const [tab,    setTab]    = useState('list');
+  const [busy,   setBusy]   = useState(false);
+  const [error,  setError]  = useState('');
+  const [pgForm, setPgForm] = useState({ host: '', port: '5432', database: '', user: '', password: '', tables: '', display_name: '' });
   const fileInputRef   = useRef(null);
   const sqliteInputRef = useRef(null);
-
   const resetError = () => setError('');
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const ext = file.name.split('.').pop().toLowerCase();
-    if (!['csv', 'json', 'jsonl'].includes(ext)) {
-      setError('Only .csv, .json, and .jsonl files are supported.'); return;
-    }
+    if (!['csv', 'json', 'jsonl'].includes(ext)) { setError('Only .csv, .json, and .jsonl files are supported.'); return; }
     setBusy(true); setError('');
     const form = new FormData();
     form.append('file', file);
@@ -391,17 +429,14 @@ function DataSourceModal({ datasources, activeDsId, onSwitch, onDelete, onClose,
     try {
       const res = await fetch('http://localhost:8000/api/datasource/upload', { method: 'POST', body: form });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Upload failed'); }
-      await onRefresh();
-      setTab('list');
+      await onRefresh(); setTab('list');
     } catch (err) { setError(err.message); }
     finally { setBusy(false); e.target.value = ''; }
   };
 
   const handlePgConnect = async () => {
     const tables = pgForm.tables.split(',').map(t => t.trim()).filter(Boolean);
-    if (!pgForm.host || !pgForm.database || !pgForm.user || !tables.length) {
-      setError('Fill in host, database, user, and at least one table name.'); return;
-    }
+    if (!pgForm.host || !pgForm.database || !pgForm.user || !tables.length) { setError('Fill in host, database, user, and at least one table name.'); return; }
     setBusy(true); setError('');
     try {
       const res = await fetch('http://localhost:8000/api/datasource/connect/postgres', {
@@ -409,8 +444,7 @@ function DataSourceModal({ datasources, activeDsId, onSwitch, onDelete, onClose,
         body: JSON.stringify({ ...pgForm, port: parseInt(pgForm.port, 10), tables }),
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Connection failed'); }
-      await onRefresh();
-      setTab('list');
+      await onRefresh(); setTab('list');
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
   };
@@ -425,231 +459,193 @@ function DataSourceModal({ datasources, activeDsId, onSwitch, onDelete, onClose,
     try {
       const res = await fetch('http://localhost:8000/api/datasource/connect/sqlite', { method: 'POST', body: form });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Import failed'); }
-      await onRefresh();
-      setTab('list');
+      await onRefresh(); setTab('list');
     } catch (err) { setError(err.message); }
     finally { setBusy(false); e.target.value = ''; }
   };
 
-  const inputStyle = {
-    width: '100%', padding: '0.55rem 0.8rem', borderRadius: 8, fontSize: '0.85rem',
-    background: T.bg, border: `1px solid ${T.border2}`, color: T.textPri,
-    outline: 'none', boxSizing: 'border-box',
-  };
-  const labelStyle = { fontSize: '0.72rem', color: T.textMuted, fontWeight: 600,
-                       textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 4 };
-  const primaryBtn = (disabled) => ({
-    padding: '0.55rem 1.1rem', borderRadius: 8, border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
-    background: disabled ? T.border2 : T.purple, color: 'white', fontSize: '0.85rem',
-    fontWeight: 600, opacity: disabled ? 0.6 : 1, transition: 'all 0.2s',
-  });
+  const inputStyle = { width: '100%', padding: '0.55rem 0.8rem', borderRadius: 8, fontSize: '0.85rem', background: T.bg, border: `1px solid ${T.border2}`, color: T.textPri, outline: 'none', boxSizing: 'border-box' };
+  const labelStyle = { fontSize: '0.72rem', color: T.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 4 };
+  const primaryBtn = (d) => ({ padding: '0.55rem 1.1rem', borderRadius: 8, border: 'none', cursor: d ? 'not-allowed' : 'pointer', background: d ? T.border2 : T.purple, color: 'white', fontSize: '0.85rem', fontWeight: 600, opacity: d ? 0.6 : 1, transition: 'all 0.2s' });
 
   const tabs = [
-    { key: 'list',     label: 'My Sources', Icon: Database },
-    { key: 'upload',   label: 'Upload File', Icon: Upload   },
-    { key: 'postgres', label: 'PostgreSQL',  Icon: Link     },
-    { key: 'sqlite',   label: 'SQLite',      Icon: Database },
+    { key: 'list',     label: m.mySources,  Icon: Database },
+    { key: 'upload',   label: m.uploadFile, Icon: Upload   },
+    { key: 'postgres', label: m.postgres,   Icon: Link     },
+    { key: 'sqlite',   label: m.sqlite,     Icon: Database },
   ];
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 100,
-      background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{
-        width: 560, maxHeight: '85vh', borderRadius: 16, overflow: 'hidden',
-        background: T.surface, border: `1px solid ${T.border}`,
-        display: 'flex', flexDirection: 'column',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
-      }}>
-        {/* Modal header */}
-        <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${T.border}`,
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 700, fontSize: '1rem', color: T.textPri,
-                         display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Database size={18} color={T.purpleHi} /> Data Sources
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+         onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ width: 560, maxHeight: '85vh', borderRadius: 16, overflow: 'hidden', background: T.surface, border: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.6)' }}>
+        {/* Header */}
+        <div style={{ padding: '1.25rem 1.5rem', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontWeight: 700, fontSize: '1rem', color: T.textPri, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Database size={18} color={T.purpleHi} /> {m.title}
           </span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none',
-                                             color: T.textMuted, cursor: 'pointer', lineHeight: 0 }}>
-            <X size={20} />
-          </button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', lineHeight: 0 }}><X size={20} /></button>
         </div>
-
-        {/* Tab bar */}
-        <div style={{ display: 'flex', borderBottom: `1px solid ${T.border}`,
-                      background: T.bg, padding: '0 0.5rem' }}>
+        {/* Tabs */}
+        <div style={{ display: 'flex', borderBottom: `1px solid ${T.border}`, background: T.bg, padding: '0 0.5rem' }}>
           {tabs.map(({ key, label, Icon }) => (
             <button key={key} onClick={() => { setTab(key); resetError(); }} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '0.7rem 0.9rem', border: 'none', background: 'none', cursor: 'pointer',
-              fontSize: '0.8rem', fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 6, padding: '0.7rem 0.9rem',
+              border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
               color: tab === key ? T.purpleHi : T.textDim,
-              borderBottom: tab === key ? `2px solid ${T.purpleHi}` : '2px solid transparent',
-              transition: 'all 0.15s',
-            }}>
-              <Icon size={13} /> {label}
-            </button>
+              borderBottom: tab === key ? `2px solid ${T.purpleHi}` : '2px solid transparent', transition: 'all 0.15s',
+            }}><Icon size={13} /> {label}</button>
           ))}
         </div>
-
-        {/* Tab content */}
+        {/* Content */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.5rem' }}>
-          {error && (
-            <div style={{ marginBottom: '1rem', padding: '0.65rem 0.9rem', borderRadius: 8,
-                          background: '#ef444418', border: '1px solid #ef4444',
-                          color: '#fca5a5', fontSize: '0.82rem' }}>
-              {error}
-            </div>
-          )}
+          {error && <div style={{ marginBottom: '1rem', padding: '0.65rem 0.9rem', borderRadius: 8, background: '#ef444418', border: '1px solid #ef4444', color: '#fca5a5', fontSize: '0.82rem' }}>{error}</div>}
 
-          {/* ── List tab ── */}
           {tab === 'list' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {datasources.map(ds => (
-                <div key={ds.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '0.75rem 1rem', borderRadius: 10,
-                  border: `1px solid ${ds.id === activeDsId ? T.purple : T.border}`,
-                  background: ds.id === activeDsId ? `${T.purple}10` : T.bg,
-                  cursor: 'pointer', transition: 'all 0.15s',
-                }} onClick={() => { onSwitch(ds.id); onClose(); }}>
+                <div key={ds.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.75rem 1rem', borderRadius: 10, border: `1px solid ${ds.id === activeDsId ? T.purple : T.border}`, background: ds.id === activeDsId ? `${T.purple}10` : T.bg, cursor: 'pointer', transition: 'all 0.15s' }}
+                     onClick={() => { onSwitch(ds.id); onClose(); }}>
                   <Database size={16} color={DS_TYPE_COLOR[ds.type] ?? T.textDim} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 2 }}>
-                      <span style={{ fontWeight: 600, fontSize: '0.88rem', color: T.textPri,
-                                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {ds.name}
-                      </span>
+                      <span style={{ fontWeight: 600, fontSize: '0.88rem', color: T.textPri, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ds.name}</span>
                       <DsTypeBadge type={ds.type} />
-                      {ds.id === activeDsId && (
-                        <span style={{ fontSize: '0.62rem', color: T.purpleHi, fontWeight: 700 }}>
-                          ACTIVE
-                        </span>
-                      )}
+                      {ds.id === activeDsId && <span style={{ fontSize: '0.62rem', color: T.purpleHi, fontWeight: 700 }}>{t.active}</span>}
                     </div>
                     <span style={{ fontSize: '0.72rem', color: T.textDim }}>{ds.description}</span>
                   </div>
                   {!ds.is_default && (
-                    <button onClick={e => { e.stopPropagation(); onDelete(ds.id); }} style={{
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: T.textDim, lineHeight: 0, padding: 4,
-                      borderRadius: 6, transition: 'color 0.15s',
-                    }}
-                      onMouseOver={e => e.currentTarget.style.color = '#ef4444'}
-                      onMouseOut={e =>  e.currentTarget.style.color = T.textDim}
-                    >
+                    <button onClick={e => { e.stopPropagation(); onDelete(ds.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textDim, lineHeight: 0, padding: 4, borderRadius: 6, transition: 'color 0.15s' }}
+                            onMouseOver={e => e.currentTarget.style.color = '#ef4444'} onMouseOut={e => e.currentTarget.style.color = T.textDim}>
                       <Trash2 size={15} />
                     </button>
                   )}
                 </div>
               ))}
-              {datasources.length === 1 && (
-                <p style={{ textAlign: 'center', color: T.textDim, fontSize: '0.82rem', paddingTop: '0.5rem' }}>
-                  No custom sources yet. Upload a file or connect a database using the tabs above.
-                </p>
-              )}
+              {datasources.length === 1 && <p style={{ textAlign: 'center', color: T.textDim, fontSize: '0.82rem', paddingTop: '0.5rem' }}>{t.noCustomSources}</p>}
             </div>
           )}
 
-          {/* ── Upload file tab ── */}
           {tab === 'upload' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <p style={{ color: T.textMuted, fontSize: '0.85rem', margin: 0 }}>
-                Upload a <strong style={{ color: T.textPri }}>CSV</strong>,{' '}
-                <strong style={{ color: T.textPri }}>JSON</strong>, or{' '}
-                <strong style={{ color: T.textPri }}>JSONL</strong> file.
-                It will be imported into an isolated DuckDB table. Max&nbsp;50&nbsp;MB.
-              </p>
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  border: `2px dashed ${T.border2}`, borderRadius: 12,
-                  padding: '2.5rem 1rem', textAlign: 'center', cursor: 'pointer',
-                  color: T.textDim, fontSize: '0.88rem', transition: 'all 0.2s',
-                }}
-                onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }}
-                onMouseOut={e =>  { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textDim; }}
-              >
+              <p style={{ color: T.textMuted, fontSize: '0.85rem', margin: 0 }}>{m.uploadDesc}</p>
+              <div onClick={() => fileInputRef.current?.click()} style={{ border: `2px dashed ${T.border2}`, borderRadius: 12, padding: '2.5rem 1rem', textAlign: 'center', cursor: 'pointer', color: T.textDim, fontSize: '0.88rem', transition: 'all 0.2s' }}
+                   onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }} onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textDim; }}>
                 <Upload size={28} style={{ margin: '0 auto 0.6rem' }} />
-                <div>Click to choose a file</div>
-                <div style={{ fontSize: '0.72rem', marginTop: 4 }}>.csv · .json · .jsonl</div>
+                <div>{m.clickFile}</div>
+                <div style={{ fontSize: '0.72rem', marginTop: 4 }}>{m.fileTypes}</div>
               </div>
-              <input ref={fileInputRef} type="file" accept=".csv,.json,.jsonl"
-                     style={{ display: 'none' }} onChange={handleFileUpload} />
-              {busy && (
-                <div style={{ textAlign: 'center', color: T.textMuted, fontSize: '0.85rem',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <Loader2 size={14} className="animate-spin" /> Importing data…
-                </div>
-              )}
+              <input ref={fileInputRef} type="file" accept=".csv,.json,.jsonl" style={{ display: 'none' }} onChange={handleFileUpload} />
+              {busy && <div style={{ textAlign: 'center', color: T.textMuted, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Loader2 size={14} className="animate-spin" /> {m.importing}</div>}
             </div>
           )}
 
-          {/* ── PostgreSQL tab ── */}
           {tab === 'postgres' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-              <p style={{ color: T.textMuted, fontSize: '0.85rem', margin: 0 }}>
-                Selected tables will be <strong style={{ color: T.textPri }}>snapshotted</strong> into
-                a local DuckDB file at connect time. Requires network access to your PostgreSQL host.
-              </p>
-              {[
-                ['Display name',  'display_name', 'text',     'My Sales DB'],
-                ['Host',          'host',         'text',     'localhost'],
-                ['Port',          'port',         'text',     '5432'],
-                ['Database',      'database',     'text',     'mydb'],
-                ['Username',      'user',         'text',     'postgres'],
-                ['Password',      'password',     'password', ''],
-                ['Tables (comma-separated)', 'tables', 'text', 'public.orders, public.customers'],
-              ].map(([label, key, type, ph]) => (
+              <p style={{ color: T.textMuted, fontSize: '0.85rem', margin: 0 }}>{m.pgDesc}</p>
+              {m.pgFields.map(([label, key, type, ph]) => (
                 <div key={key}>
                   <label style={labelStyle}>{label}</label>
-                  <input
-                    type={type} placeholder={ph} value={pgForm[key]}
-                    onChange={e => setPgForm(f => ({ ...f, [key]: e.target.value }))}
-                    style={inputStyle}
-                  />
+                  <input type={type} placeholder={ph} value={pgForm[key]} onChange={e => setPgForm(f => ({ ...f, [key]: e.target.value }))} style={inputStyle} />
                 </div>
               ))}
-              <button onClick={handlePgConnect} disabled={busy} style={primaryBtn(busy)}>
-                {busy ? 'Connecting…' : 'Connect & Snapshot'}
-              </button>
+              <button onClick={handlePgConnect} disabled={busy} style={primaryBtn(busy)}>{busy ? m.connectingBtn : m.connectBtn}</button>
             </div>
           )}
 
-          {/* ── SQLite tab ── */}
           {tab === 'sqlite' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <p style={{ color: T.textMuted, fontSize: '0.85rem', margin: 0 }}>
-                Upload a <strong style={{ color: T.textPri }}>.db</strong> or{' '}
-                <strong style={{ color: T.textPri }}>.sqlite</strong> file.
-                All user tables will be snapshotted into DuckDB. Max&nbsp;50&nbsp;MB.
-              </p>
-              <div
-                onClick={() => sqliteInputRef.current?.click()}
-                style={{
-                  border: `2px dashed ${T.border2}`, borderRadius: 12,
-                  padding: '2.5rem 1rem', textAlign: 'center', cursor: 'pointer',
-                  color: T.textDim, fontSize: '0.88rem', transition: 'all 0.2s',
-                }}
-                onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }}
-                onMouseOut={e =>  { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textDim; }}
-              >
+              <p style={{ color: T.textMuted, fontSize: '0.85rem', margin: 0 }}>{m.sqliteDesc}</p>
+              <div onClick={() => sqliteInputRef.current?.click()} style={{ border: `2px dashed ${T.border2}`, borderRadius: 12, padding: '2.5rem 1rem', textAlign: 'center', cursor: 'pointer', color: T.textDim, fontSize: '0.88rem', transition: 'all 0.2s' }}
+                   onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }} onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textDim; }}>
                 <Database size={28} style={{ margin: '0 auto 0.6rem' }} />
-                <div>Click to choose a SQLite file</div>
-                <div style={{ fontSize: '0.72rem', marginTop: 4 }}>.db · .sqlite</div>
+                <div>{m.clickSqlite}</div>
+                <div style={{ fontSize: '0.72rem', marginTop: 4 }}>{m.sqliteTypes}</div>
               </div>
-              <input ref={sqliteInputRef} type="file" accept=".db,.sqlite"
-                     style={{ display: 'none' }} onChange={handleSqliteUpload} />
-              {busy && (
-                <div style={{ textAlign: 'center', color: T.textMuted, fontSize: '0.85rem',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <Loader2 size={14} className="animate-spin" /> Importing database…
-                </div>
-              )}
+              <input ref={sqliteInputRef} type="file" accept=".db,.sqlite" style={{ display: 'none' }} onChange={handleSqliteUpload} />
+              {busy && <div style={{ textAlign: 'center', color: T.textMuted, fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Loader2 size={14} className="animate-spin" /> {m.importingDb}</div>}
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Welcome screen ───────────────────────────────────────────────────────────
+
+function WelcomeScreen({ t, onSend }) {
+  const greeting = t.greeting(new Date().getHours());
+  const icons = ['📊', '💬', '📈', '🤖', '📉'];
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem 2rem', gap: '2.5rem' }}>
+      {/* Greeting */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 64, height: 64, borderRadius: 20, marginBottom: '1.25rem',
+          background: `linear-gradient(135deg, ${T.purple}40, ${T.purpleHi}30)`,
+          border: `1px solid ${T.purple}50`,
+        }}>
+          <Sparkles size={30} color={T.purpleHi} />
+        </div>
+        <h2 style={{
+          margin: 0, fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', fontWeight: 700,
+          background: `linear-gradient(135deg, ${T.purpleSoft}, ${T.purpleHi})`,
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+          letterSpacing: '-0.02em',
+        }}>
+          {greeting}
+        </h2>
+        <p style={{ margin: '0.6rem 0 0', color: T.textMuted, fontSize: '1rem' }}>
+          {t.welcomeSub}
+        </p>
+      </div>
+
+      {/* Suggestion cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+        gap: '0.75rem',
+        width: '100%',
+        maxWidth: 700,
+      }}>
+        {t.suggestions.map((q, i) => (
+          <button
+            key={i}
+            onClick={() => onSend(q)}
+            style={{
+              textAlign: 'left',
+              background: T.surface,
+              border: `1px solid ${T.border}`,
+              borderRadius: 14,
+              padding: '1rem 1.1rem',
+              cursor: 'pointer',
+              color: T.textPri,
+              fontSize: '0.88rem',
+              lineHeight: 1.45,
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.75rem',
+            }}
+            onMouseOver={e => {
+              e.currentTarget.style.borderColor = T.purple;
+              e.currentTarget.style.background = `${T.purple}12`;
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseOut={e => {
+              e.currentTarget.style.borderColor = T.border;
+              e.currentTarget.style.background = T.surface;
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            <span style={{ fontSize: '1.1rem', lineHeight: 1, flexShrink: 0, marginTop: 1 }}>{icons[i]}</span>
+            <span>{q}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -661,16 +657,14 @@ const TEST_COMPONENTS = [
   {
     type: 'kpi', title: 'Containment Rate', subtitle: 'This week',
     data: [{ name: 'Containment Rate', value: 0.762 }],
-    format: { unit: '%', scale: 100, decimals: 1,
-              thresholds: { good: 0.85, direction: 'higher_is_better',
-                            good_color: '#7C3AED', warn_color: '#F59E0B' } },
+    format: { unit: '%', scale: 100, decimals: 1, thresholds: { good: 0.85, direction: 'higher_is_better', good_color: '#7C3AED', warn_color: '#F59E0B' } },
   },
   {
     type: 'bar', title: 'Calls by Region', subtitle: 'All conversations',
     data: [
       { name: 'attica', value: 5007 }, { name: 'thessaloniki', value: 2156 },
-      { name: 'crete',  value: 1204 }, { name: 'patras',       value: 876  },
-      { name: 'larissa',value: 543  }, { name: 'other_gr',     value: 214  },
+      { name: 'crete', value: 1204 }, { name: 'patras', value: 876 },
+      { name: 'larissa', value: 543 }, { name: 'other_gr', value: 214 },
     ],
     format: { unit: '', scale: 1, decimals: 0, thresholds: null },
   },
@@ -678,24 +672,22 @@ const TEST_COMPONENTS = [
 
 function panelLabel(components) {
   if (!components?.length) return '';
-  if (components.length === 1) {
-    const t = components[0].type;
-    return `View ${t.charAt(0).toUpperCase() + t.slice(1)} Chart`;
-  }
+  if (components.length === 1) { const t = components[0].type; return `View ${t.charAt(0).toUpperCase() + t.slice(1)} Chart`; }
   return `View Dashboard (${components.length} charts)`;
 }
 
 export default function App() {
-  const [messages, setMessages] = useState([{
-    role: 'assistant',
-    text: 'Hello! I am connected to your database. What would you like to know?',
-    components: null,
-  }]);
+  // ── Locale ──
+  const [locale, setLocale] = useState('en');
+  const t = I18N[locale];
+
+  // ── Chat ──
+  const [messages,       setMessages]       = useState([]);
   const [input,          setInput]          = useState('');
   const [isLoading,      setIsLoading]      = useState(false);
   const [sessionId,      setSessionId]      = useState(null);
 
-  // Panel: track by index so per-message state is correct
+  // Panel (index-based so per-message tracking is accurate)
   const [activeIndex,    setActiveIndex]    = useState(null);
   const activeComponents = activeIndex !== null ? messages[activeIndex]?.components : null;
 
@@ -703,12 +695,12 @@ export default function App() {
   const [completedSteps, setCompletedSteps] = useState([]);
   const [currentStep,    setCurrentStep]    = useState('');
 
-  // Datasource management
+  // Datasources
   const [datasources,    setDatasources]    = useState([]);
   const [activeDsId,     setActiveDsId]     = useState('default');
   const [showDsModal,    setShowDsModal]    = useState(false);
 
-  // Collapsible sidebar
+  // Sidebar
   const [isSidebarOpen,  setIsSidebarOpen]  = useState(true);
   const [chatHistory,    setChatHistory]    = useState([
     { id: 1, title: 'Analysis: Region Volume' },
@@ -717,7 +709,7 @@ export default function App() {
   ]);
   const [activeChatId,   setActiveChatId]   = useState(1);
 
-  // Resizable right panel
+  // Resizable panel
   const [panelWidth,     setPanelWidth]     = useState(480);
   const [isDragging,     setIsDragging]     = useState(false);
 
@@ -725,15 +717,17 @@ export default function App() {
   const messagesEndRef = useRef(null);
   const inputRef       = useRef(null);
 
+  // Welcome screen: shown while no messages sent yet
+  const isWelcomeScreen = messages.length === 0 || messages.every(m => m.role !== 'user');
+
   // Panel drag-to-resize
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (!isDragging) return;
-      const newWidth = document.body.clientWidth - e.clientX;
-      if (newWidth > 300 && newWidth < 900) setPanelWidth(newWidth);
+      const w = document.body.clientWidth - e.clientX;
+      if (w > 300 && w < 900) setPanelWidth(w);
     };
     const handleMouseUp = () => setIsDragging(false);
-
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
@@ -743,69 +737,43 @@ export default function App() {
       document.body.style.userSelect = '';
       document.body.style.cursor = 'default';
     }
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
+    return () => { document.removeEventListener('mousemove', handleMouseMove); document.removeEventListener('mouseup', handleMouseUp); };
   }, [isDragging]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const fetchDatasources = async () => {
-    try {
-      const res = await fetch('http://localhost:8000/api/datasource');
-      if (res.ok) setDatasources(await res.json());
-    } catch { /* backend not reachable */ }
+    try { const res = await fetch('http://localhost:8000/api/datasource'); if (res.ok) setDatasources(await res.json()); } catch { }
   };
-
   useEffect(() => { fetchDatasources(); }, []);
 
   const handleDeleteDs = async (dsId) => {
-    try {
-      await fetch(`http://localhost:8000/api/datasource/${dsId}`, { method: 'DELETE' });
-      if (activeDsId === dsId) setActiveDsId('default');
-      await fetchDatasources();
-    } catch { /* ignore */ }
+    try { await fetch(`http://localhost:8000/api/datasource/${dsId}`, { method: 'DELETE' }); if (activeDsId === dsId) setActiveDsId('default'); await fetchDatasources(); } catch { }
   };
 
   const handleSwitchDs = async (newId) => {
     if (newId === activeDsId) return;
     const ds = datasources.find(d => d.id === newId);
-    if (sessionId) {
-      try {
-        await fetch(`http://localhost:8000/api/session/reset?session_id=${sessionId}`, { method: 'POST' });
-      } catch { /* backend unreachable — continue anyway */ }
-    }
+    if (sessionId) { try { await fetch(`http://localhost:8000/api/session/reset?session_id=${sessionId}`, { method: 'POST' }); } catch { } }
     setActiveDsId(newId);
-    if (ds) {
-      setMessages(prev => [...prev, { role: 'separator', dsName: ds.name, dsType: ds.type }]);
-    }
+    if (ds) setMessages(prev => [...prev, { role: 'separator', dsName: ds.name, dsType: ds.type }]);
   };
 
   const runTestMode = () => {
     const reply = 'Here is a mock dashboard. I have opened the Data Inspector on the right.';
     setMessages(prev => {
-      const next = [
-        ...prev,
-        { role: 'user', text: '(Test Mode) Show me a quick overview.', components: null },
-        { role: 'assistant', text: reply, components: TEST_COMPONENTS },
-      ];
+      const next = [...prev, { role: 'user', text: '(Test Mode) Show me a quick overview.', components: null }, { role: 'assistant', text: reply, components: TEST_COMPONENTS }];
       setActiveIndex(next.length - 1);
       return next;
     });
   };
 
-  // ── API call — SSE streaming ──
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
-
-    const userMessage = input;
-    const snapshotDs  = datasources.find(d => d.id === activeDsId);
+  // ── Core send logic (shared by form submit and welcome card clicks) ──
+  const sendMessage = async (text) => {
+    if (!text.trim() || isLoading) return;
+    const snapshotDs = datasources.find(d => d.id === activeDsId);
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', text: userMessage, components: null }]);
+    setMessages(prev => [...prev, { role: 'user', text, components: null }]);
     setIsLoading(true);
     setCompletedSteps([]);
     setCurrentStep('');
@@ -815,9 +783,8 @@ export default function App() {
       const response = await fetch('http://localhost:8000/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage, session_id: sessionId, datasource_id: activeDsId }),
+        body: JSON.stringify({ message: text, session_id: sessionId, datasource_id: activeDsId }),
       });
-
       if (!response.ok || !response.body) throw new Error(`Server error ${response.status}`);
 
       const reader  = response.body.getReader();
@@ -828,7 +795,6 @@ export default function App() {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
 
@@ -836,458 +802,261 @@ export default function App() {
           if (!line.startsWith('data: ')) continue;
           const raw = line.slice(6).trim();
           if (raw === '[DONE]') continue;
-
-          let event;
-          try { event = JSON.parse(raw); } catch { continue; }
+          let event; try { event = JSON.parse(raw); } catch { continue; }
 
           if (event.type === 'progress') {
-            if (currentStepRef.current) {
-              const done = currentStepRef.current;
-              setCompletedSteps(s => [...s, done]);
-            }
+            if (currentStepRef.current) { const done = currentStepRef.current; setCompletedSteps(s => [...s, done]); }
             currentStepRef.current = event.message;
             setCurrentStep(event.message);
-
           } else if (event.type === 'result') {
             if (event.session_id) setSessionId(event.session_id);
             const components = event.components?.length ? event.components : null;
             setMessages(prev => {
-              const next = [...prev, {
-                role: 'assistant',
-                text: event.reply || 'Here is the data you requested.',
-                components,
-                suggestions: event.suggestions || [],
-                dsName: snapshotDs?.name,
-                dsType: snapshotDs?.type,
-              }];
+              const next = [...prev, { role: 'assistant', text: event.reply || 'Here is the data you requested.', components, suggestions: event.suggestions || [], dsName: snapshotDs?.name, dsType: snapshotDs?.type }];
               if (components) setActiveIndex(next.length - 1);
               return next;
             });
-
           } else if (event.type === 'error') {
-            setMessages(prev => [...prev, {
-              role: 'assistant',
-              text: `Something went wrong: ${event.message}`,
-              components: null,
-            }]);
+            setMessages(prev => [...prev, { role: 'assistant', text: `Something went wrong: ${event.message}`, components: null }]);
           }
         }
       }
     } catch {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        text: "Oops! We couldn't connect to the server right now. Please make sure the backend is running and try again.",
-        components: null,
-      }]);
+      setMessages(prev => [...prev, { role: 'assistant', text: "Oops! We couldn't reach the server. Please make sure the backend is running and try again.", components: null }]);
     } finally {
-      setIsLoading(false);
-      setCompletedSteps([]);
-      setCurrentStep('');
-      currentStepRef.current = '';
+      setIsLoading(false); setCompletedSteps([]); setCurrentStep(''); currentStepRef.current = '';
     }
   };
+
+  const handleSend = (e) => { e.preventDefault(); sendMessage(input); };
 
   const activeDs = datasources.find(d => d.id === activeDsId);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', backgroundColor: T.bg,
-                  color: T.textPri, fontFamily: 'system-ui, -apple-system, sans-serif',
-                  overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100vh', backgroundColor: T.bg, color: T.textPri, fontFamily: 'system-ui, -apple-system, sans-serif', overflow: 'hidden' }}>
 
       {showDsModal && (
-        <DataSourceModal
-          datasources={datasources}
-          activeDsId={activeDsId}
-          onSwitch={handleSwitchDs}
-          onDelete={handleDeleteDs}
-          onClose={() => setShowDsModal(false)}
-          onRefresh={fetchDatasources}
-        />
+        <DataSourceModal datasources={datasources} activeDsId={activeDsId} onSwitch={handleSwitchDs} onDelete={handleDeleteDs} onClose={() => setShowDsModal(false)} onRefresh={fetchDatasources} t={t} />
       )}
 
-      {/* ── LEFT SIDEBAR (Collapsible) ── */}
-      <div style={{
-        width: isSidebarOpen ? 260 : 0,
-        flexShrink: 0,
-        backgroundColor: '#000000',
-        borderRight: isSidebarOpen ? `1px solid ${T.border}` : 'none',
-        transition: 'width 0.3s ease',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-      }}>
+      {/* ── LEFT SIDEBAR ── */}
+      <div style={{ width: isSidebarOpen ? 260 : 0, flexShrink: 0, backgroundColor: '#000000', borderRight: isSidebarOpen ? `1px solid ${T.border}` : 'none', transition: 'width 0.3s ease', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', minWidth: 260, flex: 1 }}>
-          <button style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: T.surface,
-            color: T.textPri, padding: '0.75rem 1rem', borderRadius: 8, border: `1px solid ${T.border2}`,
-            cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500, transition: 'all 0.2s', justifyContent: 'center',
-          }}
-            onMouseOver={e => e.currentTarget.style.borderColor = T.purpleSoft}
-            onMouseOut={e =>  e.currentTarget.style.borderColor = T.border2}
-          >
-            <Plus size={18} /> New Chat
+          <button style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: T.surface, color: T.textPri, padding: '0.75rem 1rem', borderRadius: 8, border: `1px solid ${T.border2}`, cursor: 'pointer', fontSize: '0.9rem', fontWeight: 500, transition: 'all 0.2s', justifyContent: 'center' }}
+                  onMouseOver={e => e.currentTarget.style.borderColor = T.purpleSoft} onMouseOut={e => e.currentTarget.style.borderColor = T.border2}>
+            <Plus size={18} /> {t.newChat}
           </button>
-
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }}>
-            <h3 style={{ fontSize: '0.75rem', color: T.textDim, textTransform: 'uppercase',
-                         letterSpacing: '0.05em', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>
-              Chat History
-            </h3>
+            <h3 style={{ fontSize: '0.75rem', color: T.textDim, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>{t.chatHistory}</h3>
             {chatHistory.map(chat => (
-              <button key={chat.id} onClick={() => setActiveChatId(chat.id)} style={{
-                display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-                backgroundColor: activeChatId === chat.id ? T.surface : 'transparent',
-                border: 'none', borderRadius: 8,
-                color: activeChatId === chat.id ? T.textPri : T.textMuted,
-                cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
-              }}>
+              <button key={chat.id} onClick={() => setActiveChatId(chat.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', backgroundColor: activeChatId === chat.id ? T.surface : 'transparent', border: 'none', borderRadius: 8, color: activeChatId === chat.id ? T.textPri : T.textMuted, cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
                 <MessageSquare size={16} />
-                <span style={{ fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {chat.title}
-                </span>
+                <span style={{ fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{chat.title}</span>
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* ── MAIN: Chat ── */}
+      {/* ── MAIN ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
         {/* Header */}
-        <header style={{ backgroundColor: T.bg, padding: '1.5rem',
-                         borderBottom: `1px solid ${T.border}`,
-                         display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <header style={{ backgroundColor: T.bg, padding: '1.25rem 1.5rem', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                    style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer',
-                             display: 'flex', alignItems: 'center' }}
-                    onMouseOver={e => e.currentTarget.style.color = T.textPri}
-                    onMouseOut={e =>  e.currentTarget.style.color = T.textMuted}>
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                    onMouseOver={e => e.currentTarget.style.color = T.textPri} onMouseOut={e => e.currentTarget.style.color = T.textMuted}>
               <Menu size={24} />
             </button>
-            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: T.purpleSoft,
-                         display: 'flex', alignItems: 'center' }}>
-              Speak With Your Data
-              <span style={{ fontSize: '0.65rem', color: '#bd69df', fontWeight: 400,
-                             marginLeft: '0.35rem', marginTop: '0.6rem', letterSpacing: '0.05em' }}>
-                {' '}by Prompt Masters
-              </span>
+            <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, color: T.purpleSoft, display: 'flex', alignItems: 'center' }}>
+              {t.appTitle}
+              <span style={{ fontSize: '0.62rem', color: '#bd69df', fontWeight: 400, marginLeft: '0.35rem', marginTop: '0.55rem', letterSpacing: '0.05em' }}>{' '}{t.appSubtitle}</span>
             </h1>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Language toggle */}
+            <button
+              onClick={() => setLocale(l => l === 'en' ? 'el' : 'en')}
+              title={locale === 'en' ? 'Switch to Greek' : 'Αλλαγή σε Αγγλικά'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '0.4rem 0.75rem', borderRadius: 8, cursor: 'pointer',
+                background: T.surface, border: `1px solid ${T.border2}`,
+                color: T.textMuted, fontSize: '0.78rem', fontWeight: 600,
+                letterSpacing: '0.04em', transition: 'all 0.2s',
+              }}
+              onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }}
+              onMouseOut={e =>  { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}
+            >
+              <ChevronRight size={12} style={{ transform: 'rotate(90deg)' }} />
+              {locale === 'en' ? 'EN → ΕΛ' : 'ΕΛ → EN'}
+            </button>
+
             {/* Datasource selector */}
             {datasources.length > 0 && (() => {
               const active = datasources.find(d => d.id === activeDsId) ?? datasources[0];
               return (
-                <button onClick={() => setShowDsModal(true)} style={{
-                  display: 'flex', alignItems: 'center', gap: 7,
-                  padding: '0.45rem 0.8rem', borderRadius: 8, cursor: 'pointer',
-                  background: T.surface, border: `1px solid ${T.border2}`,
-                  color: T.textMuted, fontSize: '0.8rem', transition: 'all 0.2s',
-                  maxWidth: 200,
-                }}
-                  onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }}
-                  onMouseOut={e =>  { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}
-                >
+                <button onClick={() => setShowDsModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '0.4rem 0.8rem', borderRadius: 8, cursor: 'pointer', background: T.surface, border: `1px solid ${T.border2}`, color: T.textMuted, fontSize: '0.8rem', transition: 'all 0.2s', maxWidth: 200 }}
+                        onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }} onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}>
                   <Database size={13} color={DS_TYPE_COLOR[active.type] ?? T.textDim} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
-                    {active.name}
-                  </span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>{active.name}</span>
                   <ChevronDown size={12} />
                 </button>
               );
             })()}
 
             {/* Add datasource */}
-            <button onClick={() => setShowDsModal(true)} title="Add data source" style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '0.45rem', borderRadius: 8, cursor: 'pointer',
-              background: T.surface, border: `1px solid ${T.border2}`,
-              color: T.textMuted, transition: 'all 0.2s',
-            }}
-              onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }}
-              onMouseOut={e =>  { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}
-            >
+            <button onClick={() => setShowDsModal(true)} title={t.addSource} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.4rem', borderRadius: 8, cursor: 'pointer', background: T.surface, border: `1px solid ${T.border2}`, color: T.textMuted, transition: 'all 0.2s' }}
+                    onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }} onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}>
               <Plus size={16} />
             </button>
 
-            <button onClick={runTestMode} style={{
-              backgroundColor: T.surface, color: T.purpleSoft, padding: '0.5rem 1rem',
-              borderRadius: 8, border: `1px solid ${T.border2}`, cursor: 'pointer',
-              fontSize: '0.9rem', fontWeight: 500, transition: 'all 0.2s',
-            }}
-              onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.backgroundColor = T.border; }}
-              onMouseOut={e =>  { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.backgroundColor = T.surface; }}
-            >
-              Test Mode
+            <button onClick={runTestMode} style={{ backgroundColor: T.surface, color: T.purpleSoft, padding: '0.45rem 1rem', borderRadius: 8, border: `1px solid ${T.border2}`, cursor: 'pointer', fontSize: '0.88rem', fontWeight: 500, transition: 'all 0.2s' }}
+                    onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.backgroundColor = T.border; }} onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.backgroundColor = T.surface; }}>
+              {t.testMode}
             </button>
           </div>
         </header>
 
-        {/* Active datasource banner — only when NOT on the default dataset */}
+        {/* Active datasource banner */}
         {activeDs && !activeDs.is_default && (
-          <div style={{
-            padding: '0.5rem 1.5rem', borderBottom: `1px solid ${T.border}`,
-            background: `${DS_TYPE_COLOR[activeDs.type] ?? T.purple}12`,
-            display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem',
-          }}>
+          <div style={{ padding: '0.5rem 1.5rem', borderBottom: `1px solid ${T.border}`, background: `${DS_TYPE_COLOR[activeDs.type] ?? T.purple}12`, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem' }}>
             <Database size={12} color={DS_TYPE_COLOR[activeDs.type] ?? T.purpleHi} />
-            <span style={{ color: T.textMuted }}>
-              Querying <strong style={{ color: T.textPri }}>{activeDs.name}</strong>
-              {' '}·{' '}{activeDs.description}
-            </span>
-            <button onClick={() => setShowDsModal(true)} style={{
-              marginLeft: 'auto', background: 'none', border: 'none',
-              color: T.textDim, cursor: 'pointer', fontSize: '0.75rem',
-              textDecoration: 'underline',
-            }}>
-              Switch
-            </button>
+            <span style={{ color: T.textMuted }}>{t.querying} <strong style={{ color: T.textPri }}>{activeDs.name}</strong>{' '}·{' '}{activeDs.description}</span>
+            <button onClick={() => setShowDsModal(true)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: T.textDim, cursor: 'pointer', fontSize: '0.75rem', textDecoration: 'underline' }}>{t.switchBtn}</button>
           </div>
         )}
 
-        {/* Messages */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '2rem' }}>
-          <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            {messages.map((msg, idx) => {
-              // ── Separator: datasource switch marker ──
-              if (msg.role === 'separator') {
-                return (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ flex: 1, height: 1, background: T.border }} />
-                    <span style={{
-                      display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap',
-                      fontSize: '0.7rem', color: T.textDim,
-                      padding: '3px 10px', borderRadius: 20,
-                      border: `1px solid ${T.border}`, background: T.surface,
-                    }}>
-                      <Database size={10} color={DS_TYPE_COLOR[msg.dsType] ?? T.textDim} />
-                      Now querying <strong style={{ color: T.textPri, fontWeight: 600 }}>{msg.dsName}</strong>
-                    </span>
-                    <div style={{ flex: 1, height: 1, background: T.border }} />
-                  </div>
-                );
-              }
-
-              // ── Normal message bubble ──
-              return (
-                <div key={idx} style={{ display: 'flex', gap: '1rem',
-                                        flexDirection: msg.role === 'user' ? 'row-reverse' : 'row' }}>
-                  {/* Avatar */}
-                  <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: 12,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                backgroundColor: msg.role === 'user' ? T.purple : T.border,
-                                color: msg.role === 'user' ? 'white' : T.textMuted }}>
-                    {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
-                  </div>
-
-                  {/* Bubble */}
-                  <div style={{
-                    maxWidth: '85%', padding: '1.25rem', borderRadius: 16,
-                    backgroundColor: msg.role === 'user' ? T.userBg : T.surface,
-                    border: msg.role === 'user' ? 'none' : `1px solid ${T.border}`,
-                    borderTopRightRadius: msg.role === 'user' ? 4 : 16,
-                    borderTopLeftRadius:  msg.role === 'assistant' ? 4 : 16,
-                  }}>
-                    {msg.text && (
-                      <p style={{ margin: 0, lineHeight: 1.6, fontSize: '1rem',
-                                  color: msg.role === 'user' ? T.userText : T.textPri }}>
-                        {msg.text}
-                      </p>
-                    )}
-
-                    {/* Datasource badge on assistant messages */}
-                    {msg.role === 'assistant' && msg.dsName && (
-                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Database size={10} color={DS_TYPE_COLOR[msg.dsType] ?? T.textDim} />
-                        <span style={{ fontSize: '0.65rem', color: T.textDim }}>{msg.dsName}</span>
+        {/* Messages area — welcome screen or conversation */}
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          {isWelcomeScreen ? (
+            <WelcomeScreen t={t} onSend={sendMessage} />
+          ) : (
+            <div style={{ padding: '2rem' }}>
+              <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                {messages.map((msg, idx) => {
+                  if (msg.role === 'separator') {
+                    return (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ flex: 1, height: 1, background: T.border }} />
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', fontSize: '0.7rem', color: T.textDim, padding: '3px 10px', borderRadius: 20, border: `1px solid ${T.border}`, background: T.surface }}>
+                          <Database size={10} color={DS_TYPE_COLOR[msg.dsType] ?? T.textDim} />
+                          {t.nowQuerying} <strong style={{ color: T.textPri, fontWeight: 600, marginLeft: 4 }}>{msg.dsName}</strong>
+                        </span>
+                        <div style={{ flex: 1, height: 1, background: T.border }} />
                       </div>
-                    )}
+                    );
+                  }
 
-                    {/* "View Dashboard" button — only shown when this message's panel is not active */}
-                    {msg.components && activeIndex !== idx && (
-                      <button
-                        onClick={() => setActiveIndex(idx)}
-                        style={{
-                          marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
-                          padding: '0.6rem 1rem', borderRadius: 8, cursor: 'pointer',
-                          fontSize: '0.88rem', transition: 'all 0.2s',
-                          backgroundColor: T.border,
-                          border: `1px solid ${T.border2}`,
-                          color: T.purpleSoft,
-                        }}
-                        onMouseOver={e => e.currentTarget.style.borderColor = T.purple}
-                        onMouseOut={e =>  e.currentTarget.style.borderColor = T.border2}
-                      >
-                        <BarChart2 size={16} />
-                        {panelLabel(msg.components)}
-                      </button>
-                    )}
-
-                    {/* Suggested follow-up questions */}
-                    {msg.role === 'assistant' && msg.suggestions?.length > 0 && (
-                      <div style={{ marginTop: '1.1rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: '0.5rem' }}>
-                          <Sparkles size={11} color={T.textDim} />
-                          <span style={{ fontSize: '0.68rem', fontWeight: 600, color: T.textDim,
-                                         textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                            Explore further
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {msg.suggestions.map((q, i) => (
-                            <button key={i} onClick={() => {
-                              setInput(q);
-                              inputRef.current?.focus();
-                            }} style={{
-                              textAlign: 'left', background: 'none', cursor: 'pointer',
-                              padding: '0.45rem 0.75rem', borderRadius: 8,
-                              border: `1px solid ${T.border2}`,
-                              color: T.textMuted, fontSize: '0.82rem',
-                              lineHeight: 1.4, transition: 'all 0.18s',
-                            }}
-                              onMouseOver={e => {
-                                e.currentTarget.style.borderColor = T.purple;
-                                e.currentTarget.style.color = T.purpleSoft;
-                                e.currentTarget.style.background = `${T.purple}14`;
-                              }}
-                              onMouseOut={e => {
-                                e.currentTarget.style.borderColor = T.border2;
-                                e.currentTarget.style.color = T.textMuted;
-                                e.currentTarget.style.background = 'none';
-                              }}
-                            >
-                              {q}
-                            </button>
-                          ))}
-                        </div>
+                  return (
+                    <div key={idx} style={{ display: 'flex', gap: '1rem', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row' }}>
+                      {/* Avatar */}
+                      <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: msg.role === 'user' ? T.purple : T.border, color: msg.role === 'user' ? 'white' : T.textMuted }}>
+                        {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
                       </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
 
-            {/* SSE progress feed */}
-            {isLoading && (
-              <div style={{ display: 'flex', gap: '1rem', paddingLeft: '4rem' }}>
-                <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: 12,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              backgroundColor: T.border, color: T.textMuted }}>
-                  <Bot size={20} />
-                </div>
-                <div style={{
-                  display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10,
-                  borderLeft: `2px solid ${T.border2}`, paddingLeft: '1rem',
-                }}>
-                  {completedSteps.map((step, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7,
-                                          color: T.textDim, fontSize: '0.78rem' }}>
-                      <Check size={12} color={T.purple} strokeWidth={3} />
-                      <span>{step}</span>
+                      {/* Bubble */}
+                      <div style={{ maxWidth: '85%', padding: '1.25rem', borderRadius: 16, backgroundColor: msg.role === 'user' ? T.userBg : T.surface, border: msg.role === 'user' ? 'none' : `1px solid ${T.border}`, borderTopRightRadius: msg.role === 'user' ? 4 : 16, borderTopLeftRadius: msg.role === 'assistant' ? 4 : 16 }}>
+                        {msg.text && <p style={{ margin: 0, lineHeight: 1.6, fontSize: '1rem', color: msg.role === 'user' ? T.userText : T.textPri }}>{msg.text}</p>}
+
+                        {/* Datasource badge */}
+                        {msg.role === 'assistant' && msg.dsName && (
+                          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Database size={10} color={DS_TYPE_COLOR[msg.dsType] ?? T.textDim} />
+                            <span style={{ fontSize: '0.65rem', color: T.textDim }}>{msg.dsName}</span>
+                          </div>
+                        )}
+
+                        {/* View Dashboard */}
+                        {msg.components && activeIndex !== idx && (
+                          <button onClick={() => setActiveIndex(idx)} style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.88rem', transition: 'all 0.2s', backgroundColor: T.border, border: `1px solid ${T.border2}`, color: T.purpleSoft }}
+                                  onMouseOver={e => e.currentTarget.style.borderColor = T.purple} onMouseOut={e => e.currentTarget.style.borderColor = T.border2}>
+                            <BarChart2 size={16} /> {panelLabel(msg.components)}
+                          </button>
+                        )}
+
+                        {/* Suggestions */}
+                        {msg.role === 'assistant' && msg.suggestions?.length > 0 && (
+                          <div style={{ marginTop: '1.1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: '0.5rem' }}>
+                              <Sparkles size={11} color={T.textDim} />
+                              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: T.textDim, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{t.exploreFurther}</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {msg.suggestions.map((q, i) => (
+                                <button key={i} onClick={() => { setInput(q); inputRef.current?.focus(); }} style={{ textAlign: 'left', background: 'none', cursor: 'pointer', padding: '0.45rem 0.75rem', borderRadius: 8, border: `1px solid ${T.border2}`, color: T.textMuted, fontSize: '0.82rem', lineHeight: 1.4, transition: 'all 0.18s' }}
+                                        onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; e.currentTarget.style.background = `${T.purple}14`; }} onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; e.currentTarget.style.background = 'none'; }}>
+                                  {q}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  ))}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7,
-                                color: T.textMuted, fontSize: '0.82rem', fontWeight: 500 }}>
-                    <Loader2 size={13} className="animate-spin" />
-                    <span>{currentStep || 'Connecting…'}</span>
+                  );
+                })}
+
+                {/* SSE progress feed */}
+                {isLoading && (
+                  <div style={{ display: 'flex', gap: '1rem', paddingLeft: '4rem' }}>
+                    <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: T.border, color: T.textMuted }}>
+                      <Bot size={20} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 10, borderLeft: `2px solid ${T.border2}`, paddingLeft: '1rem' }}>
+                      {completedSteps.map((step, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, color: T.textDim, fontSize: '0.78rem' }}>
+                          <Check size={12} color={T.purple} strokeWidth={3} /><span>{step}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: T.textMuted, fontSize: '0.82rem', fontWeight: 500 }}>
+                        <Loader2 size={13} className="animate-spin" /><span>{currentStep || t.connecting}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
+                <div ref={messagesEndRef} />
               </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Input */}
-        <div style={{ backgroundColor: T.bg, padding: '1.5rem', borderTop: `1px solid ${T.border}` }}>
-          <form onSubmit={handleSend}
-                style={{ maxWidth: 800, margin: '0 auto', display: 'flex', gap: '0.75rem' }}>
-            {/* Paperclip opens datasource modal for file upload */}
-            <button type="button" title="Add data source" onClick={() => setShowDsModal(true)} style={{
-              backgroundColor: T.surface, color: T.textMuted,
-              padding: '0 1.25rem', borderRadius: 12,
-              border: `1px solid ${T.border}`, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', transition: 'all 0.2s',
-            }}
-              onMouseOver={e => { e.currentTarget.style.color = T.purpleSoft; e.currentTarget.style.borderColor = T.purple; }}
-              onMouseOut={e =>  { e.currentTarget.style.color = T.textMuted;  e.currentTarget.style.borderColor = T.border; }}
-            >
+        <div style={{ backgroundColor: T.bg, padding: '1.25rem 1.5rem', borderTop: `1px solid ${T.border}` }}>
+          <form onSubmit={handleSend} style={{ maxWidth: 800, margin: '0 auto', display: 'flex', gap: '0.75rem' }}>
+            <button type="button" title={t.addSource} onClick={() => setShowDsModal(true)} style={{ backgroundColor: T.surface, color: T.textMuted, padding: '0 1.25rem', borderRadius: 12, border: `1px solid ${T.border}`, cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'all 0.2s' }}
+                    onMouseOver={e => { e.currentTarget.style.color = T.purpleSoft; e.currentTarget.style.borderColor = T.purple; }} onMouseOut={e => { e.currentTarget.style.color = T.textMuted; e.currentTarget.style.borderColor = T.border; }}>
               <Paperclip size={20} />
             </button>
-
-            <input
-              ref={inputRef}
-              type="text" value={input} onChange={e => setInput(e.target.value)}
-              placeholder="Ask a question about your data…"
-              disabled={isLoading}
-              style={{ flex: 1, padding: '1rem 1.25rem', borderRadius: 12,
-                       border: `1px solid ${T.border}`, backgroundColor: T.surface,
-                       color: '#f4f4f5', outline: 'none', fontSize: '1rem',
-                       transition: 'border-color 0.2s' }}
-              onFocus={e => e.target.style.borderColor = T.purple}
-              onBlur={e =>  e.target.style.borderColor = T.border}
-            />
-
-            <button type="submit" disabled={isLoading || !input.trim()} style={{
-              backgroundColor: T.purple, color: 'white',
-              padding: '0 1.5rem', borderRadius: 12, border: 'none',
-              cursor: isLoading || !input.trim() ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background-color 0.2s',
-              opacity: isLoading || !input.trim() ? 0.5 : 1,
-            }}>
+            <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} placeholder={t.placeholder} disabled={isLoading}
+                   style={{ flex: 1, padding: '1rem 1.25rem', borderRadius: 12, border: `1px solid ${T.border}`, backgroundColor: T.surface, color: '#f4f4f5', outline: 'none', fontSize: '1rem', transition: 'border-color 0.2s' }}
+                   onFocus={e => e.target.style.borderColor = T.purple} onBlur={e => e.target.style.borderColor = T.border} />
+            <button type="submit" disabled={isLoading || !input.trim()} style={{ backgroundColor: T.purple, color: 'white', padding: '0 1.5rem', borderRadius: 12, border: 'none', cursor: isLoading || !input.trim() ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background-color 0.2s', opacity: isLoading || !input.trim() ? 0.5 : 1 }}>
               <Send size={20} />
             </button>
           </form>
         </div>
       </div>
 
-      {/* ── RIGHT: Data Inspector Panel (Resizable) ── */}
+      {/* ── RIGHT: Resizable Data Inspector Panel ── */}
       {activeComponents && (
-        <div style={{
-          width: panelWidth,
-          borderLeft: `1px solid ${T.border}`,
-          backgroundColor: T.bg, display: 'flex', flexDirection: 'column',
-          position: 'relative',
-          animation: 'slideIn 0.25s ease-out',
-        }}>
+        <div style={{ width: panelWidth, borderLeft: `1px solid ${T.border}`, backgroundColor: T.bg, display: 'flex', flexDirection: 'column', position: 'relative', animation: 'slideIn 0.25s ease-out' }}>
           {/* Drag handle */}
-          <div
-            onMouseDown={() => setIsDragging(true)}
-            style={{
-              position: 'absolute', left: -8, top: 0, bottom: 0, width: 16,
-              cursor: 'col-resize', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              backgroundColor: 'transparent', zIndex: 10,
-            }}
-          >
-            <div style={{ position: 'absolute', left: 7, top: 0, bottom: 0, width: 2,
-                          backgroundColor: isDragging ? T.purple : 'transparent',
-                          transition: 'background-color 0.2s' }} />
-            <div style={{
-              backgroundColor: T.surface, border: `1px solid ${T.border}`, borderRadius: 4, padding: 2, zIndex: 11,
-              color: isDragging ? T.purpleSoft : T.textDim, opacity: isDragging ? 1 : 0.8, transition: 'all 0.2s',
-            }}>
+          <div onMouseDown={() => setIsDragging(true)} style={{ position: 'absolute', left: -8, top: 0, bottom: 0, width: 16, cursor: 'col-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', zIndex: 10 }}>
+            <div style={{ position: 'absolute', left: 7, top: 0, bottom: 0, width: 2, backgroundColor: isDragging ? T.purple : 'transparent', transition: 'background-color 0.2s' }} />
+            <div style={{ backgroundColor: T.surface, border: `1px solid ${T.border}`, borderRadius: 4, padding: 2, zIndex: 11, color: isDragging ? T.purpleSoft : T.textDim, opacity: isDragging ? 1 : 0.8, transition: 'all 0.2s' }}>
               <GripVertical size={14} />
             </div>
           </div>
 
           {/* Panel header */}
-          <div style={{ padding: '1.5rem', borderBottom: `1px solid ${T.border}`,
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 500, color: T.textPri,
-                         display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <BarChart2 size={20} color={T.purpleHi} /> Data Inspector
+          <div style={{ padding: '1.5rem', borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 500, color: T.textPri, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <BarChart2 size={20} color={T.purpleHi} /> {t.dataInspector}
             </h2>
-            <button onClick={() => setActiveIndex(null)} style={{
-              background: 'none', border: 'none', color: T.textMuted,
-              cursor: 'pointer', transition: 'color 0.2s', lineHeight: 0,
-            }}
-              onMouseOver={e => e.currentTarget.style.color = T.textPri}
-              onMouseOut={e =>  e.currentTarget.style.color = T.textMuted}
-            >
+            <button onClick={() => setActiveIndex(null)} style={{ background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', transition: 'color 0.2s', lineHeight: 0 }}
+                    onMouseOver={e => e.currentTarget.style.color = T.textPri} onMouseOut={e => e.currentTarget.style.color = T.textMuted}>
               <X size={22} />
             </button>
           </div>
@@ -1295,14 +1064,9 @@ export default function App() {
           {/* Panel body */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
             <DashboardComponents components={activeComponents} />
-
-            {/* Raw data table below charts */}
             {activeComponents.some(c => c.type !== 'table' && c.type !== 'kpi' && c.data) && (
               <div style={{ marginTop: '3rem', borderTop: `1px solid ${T.border}`, paddingTop: '1.5rem' }}>
-                <h3 style={{ fontSize: '0.85rem', color: T.textDim, textTransform: 'uppercase',
-                             letterSpacing: '0.05em', marginBottom: '1rem' }}>
-                  Raw Data Overview
-                </h3>
+                <h3 style={{ fontSize: '0.85rem', color: T.textDim, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>{t.rawData}</h3>
                 {activeComponents.filter(c => c.type !== 'table' && c.type !== 'kpi' && c.data).map((chartObj, idx) => (
                   <TableComponent key={idx} component={{ title: chartObj.title || 'Extracted Data', data: chartObj.data }} />
                 ))}
