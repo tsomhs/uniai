@@ -160,6 +160,11 @@ export default function AuthPage({ onLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (isSignup && !form.name.trim()) return setError('Please enter your full name.');
+    if (!form.email.trim()) return setError('Please enter your email.');
+    if (!form.password) return setError('Please enter a password.');
+
     setLoading(true);
     try {
       if (isSignup) {
@@ -167,22 +172,31 @@ export default function AuthPage({ onLogin }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ name: form.name, email: form.email, password: form.password }),
+          body: JSON.stringify({ name: form.name.trim(), email: form.email.trim().toLowerCase(), password: form.password }),
         });
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.detail || 'Registration failed');
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.detail || `Registration failed (${r.status})`);
+        }
       }
       const lr = await fetch(`${API}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email: form.email, password: form.password }),
+        body: JSON.stringify({ email: form.email.trim().toLowerCase(), password: form.password }),
       });
+      if (!lr.ok) {
+        const ld = await lr.json().catch(() => ({}));
+        throw new Error(ld.detail || `Login failed (${lr.status})`);
+      }
       const ld = await lr.json();
-      if (!lr.ok) throw new Error(ld.detail || 'Login failed');
       onLogin(ld);
     } catch (err) {
-      setError(err.message);
+      if (err.name === 'TypeError') {
+        setError('Cannot reach the server. Make sure the backend is running.');
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }

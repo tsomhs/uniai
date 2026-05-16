@@ -705,22 +705,16 @@ function DataSourceModal({ datasources, activeDsId, onSwitch, onDelete, onClose,
 
 // ─── Welcome screen ───────────────────────────────────────────────────────────
 
-function WelcomeScreen({ t, onSend }) {
-  const greeting = t.greeting(new Date().getHours());
+function WelcomeScreen({ t, onSend, user }) {
+  const base = t.greeting(new Date().getHours());
+  const firstName = user?.name?.trim().split(' ')[0];
+  const greeting = firstName ? `${base}, ${firstName}` : base;
   const icons = ['📊', '💬', '📈', '🤖', '📉'];
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem 2rem', gap: '2.5rem' }}>
       {/* Greeting */}
       <div style={{ textAlign: 'center' }}>
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: 64, height: 64, borderRadius: 20, marginBottom: '1.25rem',
-          background: `linear-gradient(135deg, ${T.purple}40, ${T.purpleHi}30)`,
-          border: `1px solid ${T.purple}50`,
-        }}>
-          <Sparkles size={30} color={T.purpleHi} />
-        </div>
         <h2 style={{
           margin: 0, fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', fontWeight: 700,
           background: `linear-gradient(135deg, ${T.purpleSoft}, ${T.purpleHi})`,
@@ -1234,7 +1228,7 @@ export default function App({ user, onLogout }) {
         {/* Messages area — welcome screen or conversation */}
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {isWelcomeScreen ? (
-            <WelcomeScreen t={t} onSend={sendMessage} />
+            <WelcomeScreen t={t} onSend={sendMessage} user={user} />
           ) : (
             <div style={{ padding: '2rem' }}>
               <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '2rem' }}>

@@ -426,12 +426,13 @@ def _hash_password(salt: str, password: str) -> str:
 
 @app.post("/api/auth/register")
 def auth_register(req: RegisterRequest):
-    if req.email in _USERS:
+    email = req.email.strip().lower()
+    if email in _USERS:
         raise HTTPException(400, "Email already registered")
     salt = secrets.token_hex(16)
-    _USERS[req.email] = {
-        "name": req.name,
-        "email": req.email,
+    _USERS[email] = {
+        "name": req.name.strip(),
+        "email": email,
         "password_hash": _hash_password(salt, req.password),
         "salt": salt,
     }
@@ -440,7 +441,7 @@ def auth_register(req: RegisterRequest):
 
 @app.post("/api/auth/login")
 def auth_login(req: LoginRequest, response: Response):
-    user = _USERS.get(req.email)
+    user = _USERS.get(req.email.strip().lower())
     if not user or _hash_password(user["salt"], req.password) != user["password_hash"]:
         raise HTTPException(401, "Invalid email or password")
     token = secrets.token_hex(32)
