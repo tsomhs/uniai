@@ -4,7 +4,7 @@ import './index.css'
 import App from './App.jsx'
 
 function Root() {
-  const [user, setUser] = useState(null); // null means loading
+  const [user, setUser] = useState(null); // null means we are fetching the initial session
 
   useEffect(() => {
     // Silently create an isolated guest session on the backend
@@ -12,23 +12,22 @@ function Root() {
       method: 'POST',
       credentials: 'include'
     })
-      .then(res => {
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-        return res.json();
-      })
+      .then(res => res.json())
       .then(data => setUser(data))
       .catch(err => {
         console.error("Failed to fetch guest session:", err);
-        // Fallback so the app STILL OPENS even if the backend route is missing/down
+        // Fallback just in case the backend is down
         setUser({ name: 'Guest', email: 'guest@local' }); 
       });
   }, []);
 
   const handleLogout = () => {
+    // Easiest way to "log out" a user and turn them back into a new guest 
+    // is to just refresh the page so the useEffect runs again!
     window.location.reload();
   };
 
-  // Prevent App from rendering before we either get a real session or fallback
+  // Prevent App from rendering (and throwing 401s) before the cookie is set
   if (!user) {
     return <div style={{ height: '100vh', backgroundColor: '#09090b' }} />; 
   }

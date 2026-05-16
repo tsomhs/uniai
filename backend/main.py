@@ -1357,22 +1357,28 @@ async def _run_chat_stream(
                     _evict_sessions()
                 SESSIONS[session_id] = history[-(config.MAX_SESSION_HISTORY * 2):]
 
-                # Second-pass review by the cheap critic model. Surfaces wrong
-                # columns / wrong time windows / proxy mismatches that the
-                # main model didn't catch. Non-blocking on failure.
-                if parsed.get("components"):
+                has_components = bool(parsed.get("components"))
+                if has_components:
+                    parsed["_critique"] = {"status": "loading"}
+
+                # 2. Yield the charts IMMEDIATELY
+                yield "result", parsed
+
+                # 3. Run the second GPT asynchronously
+                if has_components:
                     yield "progress", {"message": "Reviewing answer for accuracy…"}
                     critique = await _critique_response(message, parsed)
+                    
                     if critique:
-                        parsed["_critique"] = critique
                         logger.info(
                             "[%s] critique verdict=%s issues=%d",
                             session_id[:8],
                             critique.get("verdict"),
                             len(critique.get("issues") or []),
                         )
-
-                yield "result", parsed
+                        yield "critique", {"critique": critique}
+                    else:
+                        yield "critique", {"critique": None}
                 return
 
             for tc in msg.tool_calls:

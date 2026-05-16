@@ -948,6 +948,17 @@ function CandlestickComponent({ component }) {
 
 function CritiqueBadge({ critique }) {
   const [open, setOpen] = useState(false);
+  
+  // ADD THIS BLOCK
+  if (critique?.status === 'loading') {
+    return (
+      <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 12px', borderRadius: 999, border: `1px solid ${T.border2}`, background: T.surface, color: T.textMuted, fontSize: '0.75rem' }}>
+        <Loader2 size={12} className="animate-spin" color={T.purpleSoft} />
+        <span>Reviewing data accuracy...</span>
+      </div>
+    );
+  }
+
   if (!critique || !critique.verdict) return null;
 
   const palette = {
@@ -1750,6 +1761,16 @@ export default function App({ user, setUser, onLogout }) {
             updateChat(chatId, c => {
               const next = [...(c.messages ?? []), assistantMsg];
               return { ...c, messages: next, sessionId: event.session_id ?? c.sessionId, activeIndex: components ? next.length - 1 : c.activeIndex };
+            });
+
+          // ADD THIS NEW BLOCK:
+          } else if (event.type === 'critique') {
+            updateChat(chatId, c => {
+              const next = [...(c.messages ?? [])];
+              if (next.length > 0 && next[next.length - 1].role === 'assistant') {
+                next[next.length - 1] = { ...next[next.length - 1], critique: event.critique };
+              }
+              return { ...c, messages: next };
             });
 
           } else if (event.type === 'error') {
