@@ -33,16 +33,18 @@ Response contract  (non-streaming /api/chat and the "result" SSE event)
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import re
+import secrets
 import sys
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Cookie, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
@@ -393,11 +395,78 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict to specific origins in production
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------------------------------------------------------------------------
+# Auth — in-memory user store (resets on restart; fine for hackathon)
+# ---------------------------------------------------------------------------
+
+_USERS:  dict[str, dict] = {}   # email  → {name, email, password_hash, salt}
+_TOKENS: dict[str, str]  = {}   # token  → email
+
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+def _hash_password(salt: str, password: str) -> str:
+    return hashlib.sha256((salt + password).encode()).hexdigest()
+
+
+@app.post("/api/auth/register")
+def auth_register(req: RegisterRequest):
+    if req.email in _USERS:
+        raise HTTPException(400, "Email already registered")
+    salt = secrets.token_hex(16)
+    _USERS[req.email] = {
+        "name": req.name,
+        "email": req.email,
+        "password_hash": _hash_password(salt, req.password),
+        "salt": salt,
+    }
+    return {"message": "Account created"}
+
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginRequest, response: Response):
+    user = _USERS.get(req.email)
+    if not user or _hash_password(user["salt"], req.password) != user["password_hash"]:
+        raise HTTPException(401, "Invalid email or password")
+    token = secrets.token_hex(32)
+    _TOKENS[token] = req.email
+    response.set_cookie(
+        "session", token, httponly=True, samesite="lax",
+        max_age=86400 * 7, path="/",
+    )
+    return {"name": user["name"], "email": user["email"]}
+
+
+@app.get("/api/auth/me")
+def auth_me(session: Optional[str] = Cookie(None)):
+    email = _TOKENS.get(session or "")
+    user = _USERS.get(email or "")
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    return {"name": user["name"], "email": user["email"]}
+
+
+@app.post("/api/auth/logout")
+def auth_logout(response: Response, session: Optional[str] = Cookie(None)):
+    if session:
+        _TOKENS.pop(session, None)
+    response.delete_cookie("session", path="/")
+    return {"message": "Logged out"}
 
 
 # ---------------------------------------------------------------------------

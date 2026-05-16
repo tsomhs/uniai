@@ -136,9 +136,13 @@ function FeatureItem({ icon, title, text }) {
   );
 }
 
-export default function AuthPage() {
+const API = 'http://localhost:8000';
+
+export default function AuthPage({ onLogin }) {
   const [mode, setMode] = useState('login'); // login | signup
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -153,12 +157,35 @@ export default function AuthPage() {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // This is only front-end UI logic.
-    // Connect this function later to your FastAPI / auth endpoint.
-    console.log(isSignup ? 'Sign up form submitted' : 'Login form submitted', form);
+    setError('');
+    setLoading(true);
+    try {
+      if (isSignup) {
+        const r = await fetch(`${API}/api/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name: form.name, email: form.email, password: form.password }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'Registration failed');
+      }
+      const lr = await fetch(`${API}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: form.email, password: form.password }),
+      });
+      const ld = await lr.json();
+      if (!lr.ok) throw new Error(ld.detail || 'Login failed');
+      onLogin(ld);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -457,14 +484,28 @@ export default function AuthPage() {
                 )}
               </div>
 
+              {error && (
+                <div style={{
+                  padding: '0.65rem 0.9rem',
+                  borderRadius: 10,
+                  background: '#450a0a',
+                  border: '1px solid #7f1d1d',
+                  color: '#fca5a5',
+                  fontSize: '0.84rem',
+                }}>
+                  {error}
+                </div>
+              )}
+
               <button
                 type="submit"
+                disabled={loading}
                 style={{
                   marginTop: '0.45rem',
                   height: 52,
                   border: 'none',
                   borderRadius: 14,
-                  cursor: 'pointer',
+                  cursor: loading ? 'not-allowed' : 'pointer',
                   background: `linear-gradient(135deg, ${T.purple}, ${T.purpleHi})`,
                   color: 'white',
                   fontSize: '0.96rem',
@@ -475,18 +516,13 @@ export default function AuthPage() {
                   gap: '0.6rem',
                   boxShadow: `0 14px 32px ${T.purple}33`,
                   transition: 'transform 0.18s, box-shadow 0.18s',
+                  opacity: loading ? 0.7 : 1,
                 }}
-                onMouseOver={e => {
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                  e.currentTarget.style.boxShadow = `0 18px 42px ${T.purple}44`;
-                }}
-                onMouseOut={e => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = `0 14px 32px ${T.purple}33`;
-                }}
+                onMouseOver={e => { if (!loading) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = `0 18px 42px ${T.purple}44`; } }}
+                onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = `0 14px 32px ${T.purple}33`; }}
               >
-                {isSignup ? 'Create account' : 'Log in'}
-                <ArrowRight size={18} />
+                {loading ? 'Please wait…' : (isSignup ? 'Create account' : 'Log in')}
+                {!loading && <ArrowRight size={18} />}
               </button>
             </form>
 

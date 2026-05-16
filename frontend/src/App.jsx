@@ -8,7 +8,7 @@ import {
   Send, User, Bot, Loader2, X, BarChart2, Paperclip, Check, Sparkles,
   Database, Upload, Plus, Trash2, ChevronDown, Link,
   GripVertical, Menu, MessageSquare, ChevronRight,
-  Download, Copy, Share2,
+  Download, Copy, Share2, LogOut,
 } from 'lucide-react';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -557,7 +557,7 @@ function DataSourceModal({ datasources, activeDsId, onSwitch, onDelete, onClose,
     form.append('file', file);
     form.append('display_name', file.name.replace(/\.[^.]+$/, ''));
     try {
-      const res = await fetch('http://localhost:8000/api/datasource/upload', { method: 'POST', body: form });
+      const res = await fetch('http://localhost:8000/api/datasource/upload', { method: 'POST', body: form, credentials: 'include' });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Upload failed'); }
       await onRefresh(); setTab('list');
     } catch (err) { setError(err.message); }
@@ -569,7 +569,7 @@ function DataSourceModal({ datasources, activeDsId, onSwitch, onDelete, onClose,
     if (!pgForm.host || !pgForm.database || !pgForm.user || !tables.length) { setError('Fill in host, database, user, and at least one table name.'); return; }
     setBusy(true); setError('');
     try {
-      const res = await fetch('http://localhost:8000/api/datasource/connect/postgres', {
+      const res = await fetch('http://localhost:8000/api/datasource/connect/postgres', { credentials: 'include',
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...pgForm, port: parseInt(pgForm.port, 10), tables }),
       });
@@ -587,7 +587,7 @@ function DataSourceModal({ datasources, activeDsId, onSwitch, onDelete, onClose,
     form.append('file', file);
     form.append('display_name', file.name.replace(/\.[^.]+$/, ''));
     try {
-      const res = await fetch('http://localhost:8000/api/datasource/connect/sqlite', { method: 'POST', body: form });
+      const res = await fetch('http://localhost:8000/api/datasource/connect/sqlite', { method: 'POST', body: form, credentials: 'include' });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || 'Import failed'); }
       await onRefresh(); setTab('list');
     } catch (err) { setError(err.message); }
@@ -820,9 +820,99 @@ function loadFromStorage() {
   return null;
 }
 
+// ─── UserMenu ─────────────────────────────────────────────────────────────────
+
+function UserMenu({ user, onLogout, T }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const initials = user.name
+    .split(' ')
+    .map(w => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        title="Your profile"
+        style={{
+          width: 34, height: 34, borderRadius: '50%', border: `2px solid ${open ? '#9333ea' : '#3f3f46'}`,
+          background: 'linear-gradient(135deg, #7e22ce, #9333ea)',
+          color: '#fff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'border-color 0.2s',
+          flexShrink: 0,
+        }}
+      >
+        {initials}
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 10px)', right: 0, zIndex: 200,
+          width: 240, borderRadius: 16,
+          background: '#18181b', border: '1px solid #3f3f46',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+          overflow: 'hidden',
+        }}>
+          {/* Profile header */}
+          <div style={{ padding: '1.1rem 1.1rem 0.85rem', borderBottom: '1px solid #27272a' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                background: 'linear-gradient(135deg, #7e22ce, #9333ea)',
+                color: '#fff', fontWeight: 700, fontSize: '1rem',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {initials}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: '#e4e4e7', fontWeight: 700, fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user.name}
+                </div>
+                <div style={{ color: '#71717a', fontSize: '0.76rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+                  {user.email}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ padding: '0.5rem' }}>
+            <button
+              onClick={() => { setOpen(false); onLogout(); }}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: '0.6rem',
+                padding: '0.6rem 0.75rem', borderRadius: 10, border: 'none',
+                background: 'transparent', color: '#fca5a5', cursor: 'pointer',
+                fontSize: '0.85rem', fontWeight: 600, textAlign: 'left',
+                transition: 'background 0.15s',
+              }}
+              onMouseOver={e => e.currentTarget.style.background = '#450a0a'}
+              onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <LogOut size={15} /> Log out
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
-export default function App() {
+export default function App({ user, onLogout }) {
   // ── Locale ──
   const [locale, setLocale] = useState('en');
   const t = I18N[locale];
@@ -900,7 +990,7 @@ export default function App() {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const fetchDatasources = async () => {
-    try { const res = await fetch('http://localhost:8000/api/datasource'); if (res.ok) setDatasources(await res.json()); } catch { }
+    try { const res = await fetch('http://localhost:8000/api/datasource', { credentials: 'include' }); if (res.ok) setDatasources(await res.json()); } catch { }
   };
   useEffect(() => { fetchDatasources(); }, []);
 
@@ -942,13 +1032,13 @@ export default function App() {
   };
 
   const handleDeleteDs = async (dsId) => {
-    try { await fetch(`http://localhost:8000/api/datasource/${dsId}`, { method: 'DELETE' }); if (activeDsId === dsId) setActiveDsId('default'); await fetchDatasources(); } catch { }
+    try { await fetch(`http://localhost:8000/api/datasource/${dsId}`, { method: 'DELETE', credentials: 'include' }); if (activeDsId === dsId) setActiveDsId('default'); await fetchDatasources(); } catch { }
   };
 
   const handleSwitchDs = async (newId) => {
     if (newId === activeDsId) return;
     const ds = datasources.find(d => d.id === newId);
-    if (sessionId) { try { await fetch(`http://localhost:8000/api/session/reset?session_id=${sessionId}`, { method: 'POST' }); } catch { } }
+    if (sessionId) { try { await fetch(`http://localhost:8000/api/session/reset?session_id=${sessionId}`, { method: 'POST', credentials: 'include' }); } catch { } }
     setActiveDsId(newId);
     if (ds) updateChat(activeChatId, c => ({ ...c, messages: [...c.messages, { role: 'separator', dsName: ds.name, dsType: ds.type }] }));
   };
@@ -988,7 +1078,7 @@ export default function App() {
     currentStepRef.current = '';
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat/stream', {
+      const response = await fetch('http://localhost:8000/api/chat/stream', { credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, session_id: curSessId, datasource_id: activeDsId }),
@@ -1127,6 +1217,8 @@ export default function App() {
                     onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.backgroundColor = T.border; }} onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.backgroundColor = T.surface; }}>
               {t.testMode}
             </button>
+
+            {user && <UserMenu user={user} onLogout={onLogout} T={T} />}
           </div>
         </header>
 
