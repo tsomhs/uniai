@@ -69,7 +69,8 @@ npm run dev
 στο πρόγραμμα περιήγησής σας και ξεκινήστε τη συνομιλία με τα δεδομένα σας!
 
 ## Τι Φτιάξαμε
-<img width="939" height="618" alt="app_diagram" src="https://github.com/user-attachments/assets/ccece8b8-6ace-4a26-b1c6-74a4eda41339" />
+<img width="954" height="678" alt="architecture" src="https://github.com/user-attachments/assets/e5824595-a6c5-44fb-92ee-285a20a5f955" />
+
 
 Από τα προτεινόμενα μοτίβα στην αρχική περιγραφή, επιλέξαμε και τελειοποιήσαμε το μοντέλο **SQL + Chart Inference Spec Generation**.
 
