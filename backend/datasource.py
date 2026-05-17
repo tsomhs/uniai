@@ -154,6 +154,7 @@ def ingest_file(
         "is_default":  False,
         "owner_email": owner_email,
         "description": f"{row_count:,} rows · {col_count} columns from {filename}",
+        "schema_card": _safe_build_schema_card(str(db_path), tables),
     }
     _REGISTRY[ds_id] = ds
     logger.info(
@@ -234,6 +235,7 @@ def connect_postgres(
             "host": host, "port": port,
             "database": database, "user": user,
         },
+        "schema_card": _safe_build_schema_card(str(db_path), imported),
     }
     _REGISTRY[ds_id] = ds
     logger.info(
@@ -302,6 +304,7 @@ def connect_sqlite(
         "is_default":  False,
         "owner_email": owner_email,
         "description": f"Snapshot of {len(imported)} table(s) from {filename}",
+        "schema_card": _safe_build_schema_card(str(db_path), imported),
     }
     _REGISTRY[ds_id] = ds
     logger.info(
@@ -319,3 +322,91 @@ def _safe_name(name: str) -> str:
     """Produce a safe SQL identifier from a filename stem or table name."""
     clean = re.sub(r"[^a-zA-Z0-9_]", "_", name).strip("_").lower()
     return clean or "data"
+
+
+SAMPLE_ROWS_PER_TABLE = 3
+MAX_TABLES_IN_CARD    = 25
+MAX_COLUMNS_IN_CARD   = 60
+
+
+def build_schema_card(db_path: str, tables: list[str]) -> str:
+    """
+    One-time profiling pass against a freshly snapshotted DuckDB. Returns a
+    compact markdown card the chat pipeline injects into the custom-DS system
+    prompt so the model can skip list_tables / get_table_schema on first turn.
+
+    Truncated to keep token cost bounded on wide datasets — the model can
+    still call get_table_schema for anything that overflowed.
+    """
+    truncated_tables = tables[:MAX_TABLES_IN_CARD]
+    lines: list[str] = ["# Dataset schema (cached at upload time)\n"]
+
+    conn = duckdb.connect(db_path, read_only=True)
+    try:
+        for table in truncated_tables:
+            try:
+                row_count = conn.execute(
+                    f'SELECT COUNT(*) FROM "{table}"'
+                ).fetchone()[0]
+                columns = conn.execute(f'DESCRIBE "{table}"').fetchall()
+                samples = conn.execute(
+                    f'SELECT * FROM "{table}" LIMIT {SAMPLE_ROWS_PER_TABLE}'
+                ).fetchall()
+                col_names = [c[0] for c in columns]
+            except Exception as exc:
+                logger.warning("schema-card: skipping %s: %s", table, exc)
+                continue
+
+            lines.append(f"## `{table}` ({row_count:,} rows)\n")
+            lines.append("Columns:")
+            for cname, ctype, *_ in columns[:MAX_COLUMNS_IN_CARD]:
+                lines.append(f"- `{cname}` ({ctype})")
+            if len(columns) > MAX_COLUMNS_IN_CARD:
+                lines.append(
+                    f"- …{len(columns) - MAX_COLUMNS_IN_CARD} more columns "
+                    f"(call get_table_schema for full list)"
+                )
+
+            if samples:
+                lines.append("\nSample rows:")
+                for row in samples:
+                    preview = {
+                        k: _truncate_cell(v)
+                        for k, v in zip(col_names, row)
+                    }
+                    lines.append(f"- {preview}")
+            lines.append("")
+    finally:
+        conn.close()
+
+    if len(tables) > MAX_TABLES_IN_CARD:
+        lines.append(
+            f"_…{len(tables) - MAX_TABLES_IN_CARD} more tables — "
+            f"call list_tables / get_table_schema for the rest._"
+        )
+
+    lines.append(
+        "\nTrust this schema for the first query. If a column you need is "
+        "missing or ambiguous, call `get_table_schema` to confirm before "
+        "writing SQL."
+    )
+    return "\n".join(lines)
+
+
+def _truncate_cell(v: Any, limit: int = 60) -> Any:
+    """Keep sample-row previews compact so the schema card stays small."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float, bool)):
+        return v
+    s = str(v)
+    return s if len(s) <= limit else s[:limit] + "…"
+
+
+def _safe_build_schema_card(db_path: str, tables: list[str]) -> str | None:
+    """Never let a profiling error break ingestion — log and return None."""
+    try:
+        return build_schema_card(db_path, tables)
+    except Exception as exc:
+        logger.warning("schema-card build failed for %s: %s", db_path, exc)
+        return None
