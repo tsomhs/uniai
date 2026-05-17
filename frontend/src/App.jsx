@@ -11,7 +11,7 @@ import {
   Send, User, Bot, Loader2, X, BarChart2, Paperclip, Check, Sparkles,
   Database, Upload, Plus, Trash2, ChevronDown, Link,
   GripVertical, Menu, MessageSquare, ChevronRight, ChevronLeft,
-  Download, Copy, Share2, LogOut, BookOpen,
+  Download, Copy, Share2, LogOut, BookOpen, HelpCircle,
 } from 'lucide-react';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -945,6 +945,88 @@ function CandlestickComponent({ component }) {
 }
 
 // ─── Explanation accordion ────────────────────────────────────────────────────
+
+function WhyBadge({ message, userQuestion, datasourceName, onCache }) {
+  const [open,    setOpen]    = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
+  const cached = message?.whyExplanation || null;
+
+  const fetchExplanation = async () => {
+    if (cached || loading) { setOpen(o => !o); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('http://localhost:8000/api/chat/explain', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_question:   userQuestion || '',
+          assistant_reply: message?.text || '',
+          components:      message?.components || [],
+          datasource_name: datasourceName || null,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      onCache?.({ explanation: data.explanation, model: data.model });
+      setOpen(true);
+    } catch (e) {
+      setError(e.message || 'Failed to fetch explanation.');
+      setOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 10, display: 'inline-block', maxWidth: '100%' }}>
+      <button
+        type="button"
+        onClick={fetchExplanation}
+        title="Why did the AI answer this way?"
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '5px 11px', borderRadius: 999,
+          border: `1px solid ${T.border2}`, background: T.surface,
+          color: T.textMuted, fontSize: '0.75rem', fontWeight: 600,
+          cursor: loading ? 'wait' : 'pointer', transition: 'all 0.15s',
+        }}
+        onMouseOver={e => { e.currentTarget.style.borderColor = T.purple; e.currentTarget.style.color = T.purpleSoft; }}
+        onMouseOut={e =>  { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}
+      >
+        {loading
+          ? <Loader2 size={12} className="animate-spin" />
+          : <HelpCircle size={12} />}
+        <span>Why?</span>
+        {(cached || error) && (
+          <ChevronDown size={11} style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+        )}
+      </button>
+      {open && (cached || error) && (
+        <div style={{ marginTop: 8, borderRadius: 10, border: `1px solid ${T.border2}`, background: T.surface, padding: '10px 13px', maxWidth: 560 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: T.purpleSoft, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Why this answer
+            </span>
+            <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textDim, display: 'flex' }}>
+              <X size={13} />
+            </button>
+          </div>
+          {error
+            ? <div style={{ fontSize: '0.78rem', color: '#fca5a5', lineHeight: 1.5 }}>Couldn't fetch explanation: {error}</div>
+            : <div style={{ fontSize: '0.82rem', color: T.textPri, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{cached.explanation}</div>}
+          {!error && cached?.model && (
+            <div style={{ marginTop: 8, fontSize: '0.65rem', color: T.textDim }}>
+              Reasoned by {cached.model}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CritiqueBadge({ critique }) {
   const [open, setOpen] = useState(false);
@@ -1996,6 +2078,26 @@ export default function App({ user, setUser, onLogout }) {
                         {msg.text && <p style={{ margin: 0, lineHeight: 1.6, fontSize: '1rem', color: msg.role === 'user' ? T.userText : T.textPri }}>{msg.text}</p>}
 
                         {msg.role === 'assistant' && msg.critique && <CritiqueBadge critique={msg.critique} />}
+
+                        {msg.role === 'assistant' && (msg.text || msg.components?.length) && (
+                          <div style={{ marginRight: 6, display: 'inline-block' }}>
+                            <WhyBadge
+                              message={msg}
+                              userQuestion={(() => {
+                                for (let i = idx - 1; i >= 0; i--) {
+                                  if (messages[i]?.role === 'user') return messages[i].text;
+                                }
+                                return '';
+                              })()}
+                              datasourceName={msg.dsName}
+                              onCache={(payload) => updateChat(activeChatId, c => {
+                                const next = [...(c.messages ?? [])];
+                                if (next[idx]) next[idx] = { ...next[idx], whyExplanation: payload };
+                                return { ...c, messages: next };
+                              })}
+                            />
+                          </div>
+                        )}
 
                         {/* Datasource badge */}
                         {msg.role === 'assistant' && msg.dsName && (

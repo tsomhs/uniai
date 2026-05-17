@@ -1690,6 +1690,97 @@ async def delete_datasource(
     return {"ok": True}
 
 
+EXPLAIN_SYSTEM_PROMPT = """\
+You are explaining, in plain English, WHY a data-analyst AI gave the answer
+it gave to the user's question.
+
+You will see:
+- The user's question.
+- The assistant's reply text.
+- The dashboard components it produced (chart type, title, subtitle, the
+  exact SQL executed, the analyst's stated chart-choice reasoning, and a
+  small sample of the resulting data).
+- Optionally, the active dataset's name.
+
+Write a friendly 2-4 paragraph explanation that surfaces the *interesting
+judgment calls* — not a restatement of the SQL. Focus on:
+- Which fields/columns it chose and why (especially proxy choices when the
+  user's wording didn't map to a direct field).
+- How it interpreted vague time language ("lately", "this quarter") into
+  concrete filters.
+- Why this specific chart type fits the question (vs. alternatives).
+- Any aggregation or filtering decisions worth flagging.
+
+Be conversational and concrete. Quote column names in backticks. Don't
+include the SQL verbatim — paraphrase what it does. Don't hedge ("maybe",
+"possibly") — state the choice and the reason.
+
+Output ONLY the explanation as plain markdown text. No JSON, no fence,
+no headings.
+"""
+
+
+class ExplainRequest(BaseModel):
+    user_question: str = Field(..., min_length=1, max_length=2000)
+    assistant_reply: str = Field(default="", max_length=4000)
+    components: list[dict[str, Any]] = Field(default_factory=list)
+    datasource_name: str | None = Field(default=None)
+
+
+@app.post("/api/chat/explain", tags=["chat"])
+async def explain_response(
+    request: ExplainRequest,
+    user:    str = Depends(current_user),
+) -> dict[str, Any]:
+    """
+    Generate a plain-English "why did the AI answer this way" explanation
+    for a given assistant turn. The frontend sends the full assistant
+    payload (reply + components) so we don't have to reconstruct it
+    server-side.
+    """
+    # Build a compact payload for the mini model — trim component data so
+    # the prompt stays cheap.
+    component_summary = []
+    for c in (request.components or [])[:6]:
+        data = c.get("data") or []
+        sample = data[:8] if isinstance(data, list) else data
+        component_summary.append({
+            "type":        c.get("type"),
+            "title":       c.get("title"),
+            "subtitle":    c.get("subtitle"),
+            "explanation": c.get("explanation"),
+            "sql":         c.get("sql"),
+            "data_sample": sample,
+        })
+
+    user_payload = json.dumps({
+        "user_question":   request.user_question,
+        "datasource_name": request.datasource_name,
+        "assistant_reply": request.assistant_reply,
+        "components":      component_summary,
+    }, default=str, indent=2)
+
+    try:
+        completion = await asyncio.to_thread(
+            aoai.chat.completions.create,
+            model=config.AZURE_DEPLOYMENT_MINI,
+            messages=[
+                {"role": "system", "content": EXPLAIN_SYSTEM_PROMPT},
+                {"role": "user",   "content": user_payload},
+            ],
+            temperature=0,
+            max_completion_tokens=1024,
+        )
+        text = (completion.choices[0].message.content or "").strip()
+    except Exception as exc:
+        logger.exception("explain endpoint failed for %s: %s", user, exc)
+        raise HTTPException(status_code=500, detail="Failed to generate explanation.") from exc
+
+    if not text:
+        raise HTTPException(status_code=500, detail="Explanation came back empty.")
+    return {"explanation": text, "model": config.AZURE_DEPLOYMENT_MINI}
+
+
 @app.post("/api/session/reset", tags=["chat"])
 async def reset_session(
     session_id: str,
