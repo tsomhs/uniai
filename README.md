@@ -3,6 +3,7 @@
 Καλώς ορίσατε στο αποθετήριο της ομάδας **Prompt Masters** για την πρόκληση **"SmartRep"**.
 
 Demo Video:
+
 [![Watch the demo](https://vumbnail.com/1192957705.jpg)](https://vimeo.com/1192957705?h=81e26dabcd)
 
 ---
