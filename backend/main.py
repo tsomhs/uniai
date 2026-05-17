@@ -1263,6 +1263,15 @@ async def _run_chat_stream(
     tool_schemas  = TOOL_SCHEMAS  if is_default else TOOL_SCHEMAS_GENERIC
     db_path       = None          if is_default else ds["db_path"]
 
+    # Skip-the-discovery: if we profiled this datasource at upload time,
+    # append the cached schema card so the model doesn't have to call
+    # list_tables / get_table_schema on the first turn. Tools remain
+    # available as a fallback for anything that overflowed the card.
+    if not is_default:
+        schema_card = ds.get("schema_card")
+        if schema_card:
+            system_prompt = system_prompt + "\n\n" + schema_card
+
     # Auto-reset stale schema context when the datasource changes mid-conversation.
     previous_ds_id = SESSION_DATASOURCE.get(session_id)
     if previous_ds_id is not None and previous_ds_id != ds["id"]:
@@ -1523,6 +1532,62 @@ async def chat_endpoint(
 # Datasource routes
 # ---------------------------------------------------------------------------
 
+SCHEMA_CARD_ENRICH_PROMPT = """\
+You are a senior data engineer. You will be given a mechanical schema dump
+for a freshly uploaded dataset — table names, columns, types, and sample
+rows. Produce an enriched markdown card that future analyst-LLMs can use
+to write SQL against this dataset without re-discovering its shape.
+
+For each table, add:
+- A 1–2 sentence semantic description ("appears to be a customer-orders
+  fact table", "looks like an event log keyed by user_id and ts").
+- Likely join keys to other tables in this dataset (only if the column
+  names strongly suggest a relationship).
+- Any column-level notes worth flagging (obvious enums, timestamp formats,
+  units, suspicious nulls).
+
+Be terse — one short paragraph per table is plenty. Don't invent
+relationships you can't see in the sample data. Preserve the original
+table/column names verbatim.
+
+Output ONLY the enriched markdown card, no commentary, no fence.
+"""
+
+
+async def _enrich_schema_card(ds: dict[str, Any]) -> None:
+    """
+    Best-effort: send the mechanical schema card to the mini model and
+    replace it with a semantically-annotated version. Non-fatal — if the
+    LLM call fails the original mechanical card is preserved.
+    """
+    mechanical = ds.get("schema_card")
+    if not mechanical:
+        return
+    try:
+        completion = await asyncio.to_thread(
+            aoai.chat.completions.create,
+            model=config.AZURE_DEPLOYMENT_MINI,
+            messages=[
+                {"role": "system", "content": SCHEMA_CARD_ENRICH_PROMPT},
+                {"role": "user",   "content": mechanical},
+            ],
+            temperature=0,
+            max_completion_tokens=2048,
+        )
+        enriched = (completion.choices[0].message.content or "").strip()
+        if enriched:
+            ds["schema_card"] = enriched
+            logger.info(
+                "schema-card enriched for ds=%s (%d → %d chars)",
+                ds["id"][:8], len(mechanical), len(enriched),
+            )
+    except Exception as exc:
+        logger.warning(
+            "schema-card enrichment failed for ds=%s: %s",
+            ds["id"][:8], exc,
+        )
+
+
 @app.get("/api/datasource", tags=["datasource"])
 async def list_datasources(
     user: str = Depends(current_user),
@@ -1554,6 +1619,7 @@ async def upload_datasource(
     except Exception as exc:
         logger.exception("File ingestion failed: %s", file.filename)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    await _enrich_schema_card(ds)
     return ds
 
 
@@ -1579,6 +1645,7 @@ async def connect_postgres(
     except Exception as exc:
         logger.exception("Postgres connect failed: %s@%s", request.database, request.host)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    await _enrich_schema_card(ds)
     return ds
 
 
@@ -1604,6 +1671,7 @@ async def connect_sqlite(
     except Exception as exc:
         logger.exception("SQLite connect failed: %s", file.filename)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    await _enrich_schema_card(ds)
     return ds
 
 
