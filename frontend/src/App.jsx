@@ -1905,7 +1905,7 @@ export default function App({ user, setUser, onLogout }) {
                 onMouseOut={e => { e.currentTarget.style.borderColor = T.border2; e.currentTarget.style.color = T.textMuted; }}
               >
                 <User size={14} />
-                {locale === 'en' ? 'Log in / Sign up' : 'Σύνδεση / Εγγραφή'}
+                {locale === 'en' ? 'Sign In / Sign up' : 'Σύνδεση / Εγγραφή'}
               </button>
             )}
 

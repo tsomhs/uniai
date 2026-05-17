@@ -223,7 +223,7 @@ export default function AuthPage({ onLogin }) {
               }}>
                 {isSignup
                   ? ''
-                  : 'Log in to continue your conversation with your data.'}
+                  : 'Sign In to continue your conversation with your data.'}
               </p>
             </div>
 
@@ -359,7 +359,7 @@ export default function AuthPage({ onLogin }) {
                 onMouseOver={e => { if (!loading) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = `0 18px 42px ${T.purple}44`; } }}
                 onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = `0 14px 32px ${T.purple}33`; }}
               >
-                {loading ? 'Please wait…' : (isSignup ? 'Create account' : 'Log in')}
+                {loading ? 'Please wait…' : (isSignup ? 'Create account' : 'Sign In')}
                 {!loading && <ArrowRight size={18} />}
               </button>
             </form>
@@ -386,7 +386,7 @@ export default function AuthPage({ onLogin }) {
                   padding: 0,
                 }}
               >
-                {isSignup ? 'Log in' : 'Sign up'}
+                {isSignup ? 'Sign In' : 'Sign up'}
               </button>
             </p>
           </div>
